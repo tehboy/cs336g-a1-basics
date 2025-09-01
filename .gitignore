@@ -163,3 +163,5 @@ cython_debug/
 *.zip
 *.tar.gz
 data/
+.devcontainer/devcontainer.json
+.github/dependabot.yml
