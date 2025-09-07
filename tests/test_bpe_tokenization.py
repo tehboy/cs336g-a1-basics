@@ -12,6 +12,10 @@ def byte_seq(word: str) -> common_types.ByteSequence:
     return tuple(map(int.to_bytes, word.encode("utf-8")))
 
 
+def byte_pair(a, b) -> common_types.BytePair:
+    return (a.encode("utf-8"), b.encode("utf-8"))
+
+
 def test_find_chunk_boundaries_basic():
     # Create a bytes buffer with special tokens
     data = b"abc<|endoftext|>def<|endoftext|>ghi"
@@ -108,3 +112,15 @@ def test_sennheiser_example():
     assert set(expected_vocab.keys()) == set(vocab.keys())
     assert set(expected_vocab.values()) == set(vocab.values())
     assert set([a + b for (a, b) in merge_list]) == set(expected_merge_list)
+
+
+def test_bpe_state():
+    state = bpe.BpeState()
+    state.add_word(byte_seq("foo"))
+    state.add_word(byte_seq("foo"))
+    state.add_word(byte_seq("bar"))
+    state.compute_initial_bp_counts()
+    assert state.word_counts_by_id == {state.ids_by_word[byte_seq("foo")]: 2, state.ids_by_word[byte_seq("bar")]: 1}
+    assert state.bp_counts[byte_pair("o", "o")] == 2
+    assert state.compute_next_bp() == (b"o", b"o")
+    assert state.compute_next_bp() == (b"f", "oo")

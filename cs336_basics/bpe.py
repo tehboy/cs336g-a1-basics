@@ -83,20 +83,22 @@ def _sennrich_compute_next_bp(word_counts: ByteSequenceCounts) -> BytePair | Non
     return max_bp
 
 
-def _update_byte_sequence_with_bp(byte_sequence_counts: ByteSequenceCounts, bp: BytePair) -> ByteSequenceCounts:
-    def _replace_bps(byte_seq: ByteSequence, bp: BytePair) -> ByteSequence:
-        result = []
-        i = 0
-        while i < len(byte_seq):
-            if i < len(byte_seq) - 1 and (byte_seq[i], byte_seq[i + 1]) == bp:
-                result.append(byte_seq[i] + byte_seq[i + 1])
-                i += 2  # Skip the next one, since it's merged
-            else:
-                result.append(byte_seq[i])
-                i += 1
-        return tuple(result)
+def _replace_bps_in_bseq(byte_seq: ByteSequence, bp: BytePair) -> ByteSequence:
+    result = []
+    i = 0
+    byte_seq_len = len(byte_seq)
+    while i < byte_seq_len:
+        if i < byte_seq_len - 1 and (byte_seq[i], byte_seq[i + 1]) == bp:
+            result.append(byte_seq[i] + byte_seq[i + 1])
+            i += 2  # Skip the next one, since it's merged
+        else:
+            result.append(byte_seq[i])
+            i += 1
+    return tuple(result)
 
-    return {_replace_bps(k, bp): v for k, v in byte_sequence_counts.items()}
+
+def _update_byte_sequence_with_bp(byte_sequence_counts: ByteSequenceCounts, bp: BytePair) -> ByteSequenceCounts:
+    return {_replace_bps_in_bseq(k, bp): v for k, v in byte_sequence_counts.items()}
 
 
 def _pretokenize_words(input: str, special_tokens: list[str]) -> dict[ByteSequence, int]:
@@ -155,31 +157,82 @@ def run_sennrich_bpe(
     return (vocab, merge_list)
 
 
-def run_train_bpe(
-    input_path: str | os.PathLike,
-    vocab_size: int,
-    special_tokens: list[str],
-    **kwargs,
-) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
-    """Given the path to an input corpus, run train a BPE tokenizer and
-    output its vocabulary and merges.
+def _bps_from_bseq(bseq: ByteSequence) -> list[BytePair]:
+    return [(first, second) for first, second in zip(bseq[0:-1], bseq[1:])]
 
-    Args:
-        input_path (str | os.PathLike): Path to BPE tokenizer training data.
-        vocab_size (int): Total number of items in the tokenizer's vocabulary (including special tokens).
-        special_tokens (list[str]): A list of string special tokens to be added to the tokenizer vocabulary.
-            These strings will never be split into multiple tokens, and will always be
-            kept as a single token. If these special tokens occur in the `input_path`,
-            they are treated as any other string.
 
-    Returns:
-        tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
-            vocab:
-                The trained tokenizer vocabulary, a mapping from int (token ID in the vocabulary)
-                to bytes (token bytes)
-            merges:
-                BPE merges. Each list item is a tuple of bytes (<token1>, <token2>),
-                representing that <token1> was merged with <token2>.
-                Merges are ordered by order of creation.
-    """
-    raise NotImplementedError
+def _bps_in_bseq(bseq: ByteSequence) -> set[BytePair]:
+    return {(first, second) for first, second in zip(bseq[0:-1], bseq[1:])}
+
+
+def _count_bps_in_bseq(bseq: ByteSequence) -> dict[BytePair, int]:
+    bp_counts = defaultdict(int)
+    for bp in _bps_from_bseq(bseq):
+        bp_counts[bp] += 1
+    return bp_counts
+
+
+class Word:
+    def __init__(self, word: ByteSequence) -> None:
+        self.word: ByteSequence = word
+        self.bp_counts = _count_bps_in_bseq(word)
+
+    def _bp_at(self, idx: int) -> BytePair:
+        return (self.word[idx], self.word[idx + 1])
+
+    def replace_bp(self, bp: BytePair) -> tuple[dict[BytePair, int], set[BytePair], set[BytePair]]:
+        """Join any instances of the given BytePair. Return a dictionary
+        containing the computed differences, a tuple of removed byte pairs,
+        and a tuple of added byte pairs."""
+        new_word = _replace_bps_in_bseq(self.word, bp)
+        self.word = tuple(new_word)
+        bp_diffs = defaultdict(int)
+        old_bps = self.bp_counts.keys()
+        for bp, count in self.bp_counts.items():
+            bp_diffs[bp] -= count
+        self.bp_counts = _count_bps_in_bseq(new_word)
+        new_bps = self.bp_counts.keys()
+        for bp, count in self.bp_counts.items():
+            bp_diffs[bp] += count
+        return (bp_diffs, old_bps - new_bps, new_bps - old_bps)
+
+
+class BpeState:
+    def __init__(self) -> None:
+        self.ids_by_word: dict[ByteSequence, int] = {}
+        self.words_by_id: dict[int, Word] = {}
+        self.word_counts_by_id: dict[int, int] = defaultdict(int)
+        self.next_word_id = 0
+        self.word_ids_by_bp: dict[BytePair, set[int]] = defaultdict(set)
+        self.bp_counts: dict[BytePair, int] = defaultdict(int)
+        self.merge_list = list[BytePair]
+
+    def add_word(self, word: ByteSequence, count: int = 1) -> None:
+        word_id = self.ids_by_word.get(word)
+        if word_id is None:
+            word_id = self.next_word_id
+            self.ids_by_word[word] = word_id
+            self.words_by_id[word_id] = Word(word)
+            self.next_word_id += 1
+        self.word_counts_by_id[word_id] += 1
+
+    def compute_initial_bp_counts(self) -> None:
+        assert len(self.bp_counts) == 0 and len(self.word_ids_by_bp) == 0
+        for word_id, count in self.word_counts_by_id.items():
+            word = self.words_by_id[word_id]
+            for bp, count in word.bp_counts.items():
+                self.word_ids_by_bp[bp].add(word_id)
+                self.bp_counts[bp] += count
+
+    def compute_next_bp(self) -> BytePair:
+        next_bp, _ = max(self.bp_counts.items(), key=lambda x: (x[1], x[0]))
+        bp_word_ids = self.word_ids_by_bp[next_bp]
+        for word_id in bp_word_ids:
+            bp_counts, removed_bps, added_bps = self.words_by_id[word_id].replace_bp(next_bp)
+            for bp, count in bp_counts.items():
+                self.bp_counts[bp] += count
+            for removed_bp in removed_bps:
+                self.word_ids_by_bp[removed_bp].remove(word_id)
+            for added_bp in added_bps:
+                self.word_ids_by_bp[added_bp].add(word_id)
+        return next_bp
