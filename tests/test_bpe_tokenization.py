@@ -2,6 +2,8 @@ import io
 import itertools
 import os
 
+import pytest
+
 from cs336_basics import bpe
 from cs336_basics import common_types
 
@@ -120,16 +122,143 @@ def test_sennheiser_example():
     assert set([a + b for (a, b) in merge_list]) == set(expected_merge_list)
 
 
-def test_bpe_state():
-    state = bpe.BpeState()
-    state.add_word(byte_seq("foo"))
-    state.add_word(byte_seq("foo"))
-    state.add_word(byte_seq("bar"))
-    state.compute_initial_bp_counts()
-    assert state.word_counts_by_id == {
-        state.ids_by_word[byte_seq("foo")]: 2,
-        state.ids_by_word[byte_seq("bar")]: 1,
+def test_word_initialization_and_bp_counts():
+    w = bpe.Word((b"a", b"b", b"c", b"d"))
+    # Should count ab, bc, cd
+    expected = {
+        (b"a", b"b"): 1,
+        (b"b", b"c"): 1,
+        (b"c", b"d"): 1,
     }
-    assert state.bp_counts[byte_pair("o", "o")] == 2
-    assert state.compute_next_bp() == (b"o", b"o")
-    assert state.compute_next_bp() == (b"f", "oo")
+    assert w.bp_counts == expected
+
+
+def test_word_bp_at_returns_correct_pair():
+    w = bpe.Word((b"x", b"y", b"z"))
+    assert w._bp_at(0) == (b"x", b"y")
+    assert w._bp_at(1) == (b"y", b"z")
+
+
+def test_word_replace_bp_merges_and_updates_counts():
+    w = bpe.Word((b"a", b"b", b"c", b"b", b"c"))
+    bp = (b"b", b"c")
+    bp_diffs, removed_bps, added_bps = w.replace_bp(bp)
+    # After merging, should have (b"a", b"bc", b"bc")
+    assert w.word == (b"a", b"bc", b"bc")
+    # bp_diffs should reflect removal of (b"b", b"c") and addition of (b"bc", b"bc")
+    assert bp_diffs == {
+        byte_pair("a", "bc"): 1,
+        byte_pair("bc", "bc"): 1,
+        byte_pair("a", "b"): -1,
+        byte_pair("c", "b"): -1,
+        byte_pair("b", "c"): -2,
+    }
+    assert removed_bps == {byte_pair("a", "b"), byte_pair("b", "c"), byte_pair("c", "b")}
+    assert added_bps == {byte_pair("a", "bc"), byte_pair("bc", "bc")}
+
+
+def test_word_replace_bp_no_merge_if_not_present():
+    w = bpe.Word((b"a", b"b", b"c"))
+    bp = (b"x", b"y")
+    bp_diffs, removed_bps, added_bps = w.replace_bp(bp)
+    # No merge should happen
+    assert w.word == (b"a", b"b", b"c")
+    # bp_diffs should be zero for all pairs
+    assert all(v == 0 for v in bp_diffs.values())
+    assert removed_bps == set()
+    assert added_bps == set()
+
+
+def test_bpe_state_add_word_and_counts():
+    state = bpe.BpeState()
+    word1 = (b"a", b"b", b"c")
+    word2 = (b"d", b"e")
+    state.add_word(word1, count=2)
+    state.add_word(word2, count=1)
+    # Should assign unique IDs and count correctly
+    assert state.ids_by_word[word1] != state.ids_by_word[word2]
+    assert state.word_counts_by_id[state.ids_by_word[word1]] == 2
+    assert state.word_counts_by_id[state.ids_by_word[word2]] == 1
+    assert isinstance(state.words_by_id[state.ids_by_word[word1]], bpe.Word)
+
+
+def test_bpe_state_compute_initial_bp_counts():
+    state = bpe.BpeState()
+    word1 = (b"a", b"b", b"c")
+    word2 = (b"b", b"c", b"d")
+    state.add_word(word1, count=1)
+    state.add_word(word2, count=1)
+    state.compute_initial_bp_counts()
+    # Should count all byte pairs in both words
+    expected_bps = {(b"a", b"b"), (b"b", b"c"), (b"c", b"d")}
+    assert set(state.bp_counts.keys()) == expected_bps
+    assert state.bp_counts[(b"b", b"c")] == 2
+    assert state.bp_counts[(b"a", b"b")] == 1
+    assert state.bp_counts[(b"c", b"d")] == 1
+    # Should map bps to word IDs
+    for bp in expected_bps:
+        assert isinstance(state.word_ids_by_bp[bp], set)
+        assert len(state.word_ids_by_bp[bp]) >= 1
+
+
+def test_bpe_state_compute_next_bp_merges():
+    state = bpe.BpeState()
+    word1 = (b"a", b"b", b"b")
+    word2 = (b"a", b"b")
+    state.add_word(word1, count=1)
+    state.add_word(word2, count=1)
+    state.compute_initial_bp_counts()
+    # The most frequent bp is (b"a", b"b")
+    next_bp = state.compute_next_bp()
+    assert next_bp == (b"a", b"b")
+    # After merge, words should be updated
+    assert {w.word for w in state.words_by_id.values()} == {(b"ab", b"b"), (b"ab",)}
+
+
+def test_bpe_state_multiple_merges():
+    state = bpe.BpeState()
+    word = (b"x", b"y", b"z", b"y", b"z")
+    state.add_word(word, count=1)
+    state.compute_initial_bp_counts()
+    # First merge: (b"y", b"z")
+    bp1 = state.compute_next_bp()
+    assert bp1 == (b"y", b"z")
+    # After merge, word should contain b"yz"
+    merged_word = state.words_by_id[state.ids_by_word[word]].word
+    assert b"y" + b"z" in merged_word
+    # Second merge: (b"yz", b"yz")
+    bp2 = state.compute_next_bp()
+    assert bp2 == (b"y" + b"z", b"y" + b"z")
+    merged_word2 = state.words_by_id[state.ids_by_word[word]].word
+    assert merged_word2 == (b"x", b"y" + b"z" + b"y" + b"z")
+
+
+def test_bpe_state_no_merge_when_no_pairs():
+    state = bpe.BpeState()
+    word = (b"a", b"b")
+    state.add_word(word, count=1)
+    state.compute_initial_bp_counts()
+    assert state.compute_next_bp() == byte_pair("a", "b")
+    # No byte pairs to merge
+    # compute_next_bp will return None because bp_counts is empty
+    assert state.compute_next_bp() is None
+
+
+def test_nboy_example():
+    expected_vocab = bpe._initialize_vocabulary(["<|endoftext|>"])
+    expected_merge_list = [b"st", b"est", b"ow", b"low", b"west", b"ne"]
+    for i, bp in zip(itertools.count(len(expected_vocab)), expected_merge_list):
+        expected_vocab[i] = bp
+    vocab_size = 263
+
+    input_path = FIXTURES_PATH / "sennheiser_example.txt"
+    vocab, merge_list = bpe.run_nboy_bpe(
+        input_path=input_path,
+        vocab_size=vocab_size,
+        special_tokens=["<|endoftext|>"],
+    )
+
+    assert (len(vocab)) == vocab_size
+    assert set(expected_vocab.keys()) == set(vocab.keys())
+    assert set(expected_vocab.values()) == set(vocab.values())
+    assert set([a + b for (a, b) in merge_list]) == set(expected_merge_list)

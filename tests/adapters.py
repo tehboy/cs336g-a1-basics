@@ -8,7 +8,7 @@ from jaxtyping import Float, Int
 import numpy.typing as npt
 import torch
 from torch import Tensor
-from cs336_basics.bpe import run_sennrich_bpe
+from cs336_basics.bpe import run_nboy_bpe
 
 
 def run_linear(
@@ -591,4 +591,4 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    return run_sennrich_bpe(input_path, vocab_size, special_tokens, **kwargs)
+    return run_nboy_bpe(input_path, vocab_size, special_tokens, **kwargs)

@@ -8,6 +8,8 @@ import regex
 from .common_types import BytePair, ByteSequence, MergeList, Vocab
 from itertools import chain
 
+import multiprocessing
+
 ByteSequenceCounts: TypeAlias = Mapping[ByteSequence, int]
 
 ENDOFTEXT: bytes = "<|endoftext|>".encode("utf-8")
@@ -223,25 +225,77 @@ class BpeState:
             self.ids_by_word[word] = word_id
             self.words_by_id[word_id] = Word(word)
             self.next_word_id += 1
-        self.word_counts_by_id[word_id] += 1
+        self.word_counts_by_id[word_id] += count
 
     def compute_initial_bp_counts(self) -> None:
         assert len(self.bp_counts) == 0 and len(self.word_ids_by_bp) == 0
-        for word_id, count in self.word_counts_by_id.items():
+        for word_id, word_count in self.word_counts_by_id.items():
             word = self.words_by_id[word_id]
-            for bp, count in word.bp_counts.items():
+            for bp, bp_count in word.bp_counts.items():
                 self.word_ids_by_bp[bp].add(word_id)
-                self.bp_counts[bp] += count
+                self.bp_counts[bp] += bp_count * word_count
 
-    def compute_next_bp(self) -> BytePair:
+    def compute_next_bp(self) -> BytePair | None:
+        if len(self.bp_counts) == 0:
+            return None
         next_bp, _ = max(self.bp_counts.items(), key=lambda x: (x[1], x[0]))
-        bp_word_ids = self.word_ids_by_bp[next_bp]
+        bp_word_ids = list(self.word_ids_by_bp[next_bp])
         for word_id in bp_word_ids:
-            bp_counts, removed_bps, added_bps = self.words_by_id[word_id].replace_bp(next_bp)
-            for bp, count in bp_counts.items():
-                self.bp_counts[bp] += count
+            word_count = self.word_counts_by_id[word_id]
+            word_bp_counts, removed_bps, added_bps = self.words_by_id[word_id].replace_bp(next_bp)
+            for bp, bp_count in word_bp_counts.items():
+                new_count = self.bp_counts[bp] + bp_count * word_count
+                if new_count == 0:
+                    del self.bp_counts[bp]
+                else:
+                    self.bp_counts[bp] = new_count
             for removed_bp in removed_bps:
                 self.word_ids_by_bp[removed_bp].remove(word_id)
             for added_bp in added_bps:
                 self.word_ids_by_bp[added_bp].add(word_id)
         return next_bp
+
+
+def pretokenize_chunk(
+    input_path: str, start: int, end: int, special_tokens
+) -> dict[ByteSequence, int]:
+    with open(input_path, "rb") as input_file:
+        input_file.seek(start)
+        chunk_data = input_file.read(end - start)
+    return _pretokenize_words(chunk_data.decode("utf-8"), special_tokens)
+
+
+def run_nboy_bpe(
+    input_path: str | os.PathLike,
+    vocab_size: int,
+    special_tokens: list[str],
+    **kwargs,
+) -> tuple[Vocab, Sequence[BytePair]]:
+    vocab: dict[int, bytes] = _initialize_vocabulary(special_tokens)
+    if len(vocab) > vocab_size:
+        ValueError("vocab_size is too low.")
+    boundaries = []
+    bpe_state = BpeState()
+    with open(input_path, "rb") as input_file:
+        boundaries: list[int] = _find_chunk_boundaries(input_file, 16, ENDOFTEXT)
+    with multiprocessing.Pool(16) as pool:
+        for result in pool.starmap(
+            pretokenize_chunk,
+            [
+                (input_path, start, end, special_tokens)
+                for start, end in zip(boundaries[:-1], boundaries[1:])
+            ],
+        ):
+            for word, count in result.items():
+                bpe_state.add_word(word, count)
+    merge_list = []
+    bpe_state.compute_initial_bp_counts()
+    for _ in range(vocab_size - len(vocab)):
+        bp = bpe_state.compute_next_bp()
+        if bp is None:
+            break
+        merge_list.append(bp)
+    for bp in merge_list:
+        merged_token = bp[0] + bp[1]
+        vocab[len(vocab)] = merged_token
+    return (vocab, merge_list)
