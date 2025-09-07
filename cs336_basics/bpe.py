@@ -67,7 +67,9 @@ def _initialize_vocabulary(special_tokens: list[str]) -> dict[int, bytes]:
     return vocabulary
 
 
-def _sennrich_compute_next_bp(word_counts: ByteSequenceCounts) -> BytePair | None:
+def _sennrich_compute_next_bp(
+    word_counts: ByteSequenceCounts,
+) -> BytePair | None:
     max_bp: BytePair = (bytes(), bytes())  # always reassigned
     max_bp_count = 0
     bp_counts: dict[BytePair, int] = defaultdict(int)
@@ -97,12 +99,16 @@ def _replace_bps_in_bseq(byte_seq: ByteSequence, bp: BytePair) -> ByteSequence:
     return tuple(result)
 
 
-def _update_byte_sequence_with_bp(byte_sequence_counts: ByteSequenceCounts, bp: BytePair) -> ByteSequenceCounts:
+def _update_byte_sequence_with_bp(
+    byte_sequence_counts: ByteSequenceCounts, bp: BytePair
+) -> ByteSequenceCounts:
     return {_replace_bps_in_bseq(k, bp): v for k, v in byte_sequence_counts.items()}
 
 
 def _pretokenize_words(input: str, special_tokens: list[str]) -> dict[ByteSequence, int]:
-    PRETOKEN_PATTERN = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    PRETOKEN_PATTERN = (
+        r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    )
 
     def split_on_special_token(inputs: Iterable[str], token: str) -> Iterable[str]:
         return chain.from_iterable(input.split(token) for input in inputs)
@@ -118,7 +124,9 @@ def _pretokenize_words(input: str, special_tokens: list[str]) -> dict[ByteSequen
     return pretoken_counts
 
 
-def _merge_byte_sequence_counts(one: ByteSequenceCounts, two: ByteSequenceCounts) -> ByteSequenceCounts:
+def _merge_byte_sequence_counts(
+    one: ByteSequenceCounts, two: ByteSequenceCounts
+) -> ByteSequenceCounts:
     merged = defaultdict(int, one)
     for k, v in two.items():
         merged[k] += v
@@ -142,7 +150,8 @@ def run_sennrich_bpe(
             input_file.seek(start)
             chunk_data = input_file.read(end - start)
             byte_sequence_counts = _merge_byte_sequence_counts(
-                byte_sequence_counts, _pretokenize_words(chunk_data.decode("utf-8"), special_tokens)
+                byte_sequence_counts,
+                _pretokenize_words(chunk_data.decode("utf-8"), special_tokens),
             )
     merge_list = []
     for _ in range(vocab_size - len(vocab)):

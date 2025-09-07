@@ -82,7 +82,13 @@ def test_pretokenize_words_honors_special_tokens():
     foo_token = byte_seq(" foo")
     bar_token = byte_seq(" bar")
     space_token = byte_seq(" ")
-    assert counts == {hello_token: 1, world_token: 1, foo_token: 2, bar_token: 1, space_token: 4}
+    assert counts == {
+        hello_token: 1,
+        world_token: 1,
+        foo_token: 2,
+        bar_token: 1,
+        space_token: 4,
+    }
 
 
 def test_merge_byte_sequence_counts_merges_counts():
@@ -120,7 +126,10 @@ def test_bpe_state():
     state.add_word(byte_seq("foo"))
     state.add_word(byte_seq("bar"))
     state.compute_initial_bp_counts()
-    assert state.word_counts_by_id == {state.ids_by_word[byte_seq("foo")]: 2, state.ids_by_word[byte_seq("bar")]: 1}
+    assert state.word_counts_by_id == {
+        state.ids_by_word[byte_seq("foo")]: 2,
+        state.ids_by_word[byte_seq("bar")]: 1,
+    }
     assert state.bp_counts[byte_pair("o", "o")] == 2
     assert state.compute_next_bp() == (b"o", b"o")
     assert state.compute_next_bp() == (b"f", "oo")

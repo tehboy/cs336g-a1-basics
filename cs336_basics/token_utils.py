@@ -39,7 +39,11 @@ def gpt2_bytes_to_unicode() -> Mapping[int, str]:
     """
     # These 188 integers can used as-is, since they are not whitespace or
     # control characters. See https://www.ssec.wisc.edu/~tomw/java/unicode.html.
-    bs = list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1)) + list(range(ord("®"), ord("ÿ") + 1))
+    bs = (
+        list(range(ord("!"), ord("~") + 1))
+        + list(range(ord("¡"), ord("¬") + 1))
+        + list(range(ord("®"), ord("ÿ") + 1))
+    )
     cs = bs[:]
     # now get the representations of the other 68 integers that do need
     # shifting each will get mapped chr(256 + n), where n will grow from 0...67
@@ -78,7 +82,9 @@ def save_vocab_and_merges(
 
     # Convert the byte tokens in the vocab to unicode strings for serialization.
     # The vocab is saved as {string_token: id}.
-    string_vocab = {"".join([byte_to_unicode[b] for b in byte_token]): k for k, byte_token in vocab.items()}
+    string_vocab = {
+        "".join([byte_to_unicode[b] for b in byte_token]): k for k, byte_token in vocab.items()
+    }
 
     # Convert the byte pairs in the merges list to space-separated strings.
     string_merges = [
@@ -118,7 +124,10 @@ def load_vocab_and_merges(
 
     # Convert the string tokens back into byte sequences.
     # The vocabulary is loaded as {id: byte_token}.
-    vocab = {index: bytes([unicode_to_byte[char] for char in token]) for token, index in string_vocab.items()}
+    vocab = {
+        index: bytes([unicode_to_byte[char] for char in token])
+        for token, index in string_vocab.items()
+    }
 
     # Load the string-based merges from the text file.
     merges = []
