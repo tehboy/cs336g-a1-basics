@@ -276,9 +276,10 @@ def run_nboy_bpe(
         ValueError("vocab_size is too low.")
     boundaries = []
     bpe_state = BpeState()
+    num_cpus = multiprocessing.cpu_count()
     with open(input_path, "rb") as input_file:
-        boundaries: list[int] = _find_chunk_boundaries(input_file, 16, ENDOFTEXT)
-    with multiprocessing.Pool(16) as pool:
+        boundaries: list[int] = _find_chunk_boundaries(input_file, num_cpus, ENDOFTEXT)
+    with multiprocessing.Pool(num_cpus) as pool:
         for result in pool.starmap(
             pretokenize_chunk,
             [
