@@ -278,7 +278,7 @@ def run_nboy_bpe(
     bpe_state = BpeState()
     num_cpus = multiprocessing.cpu_count()
     with open(input_path, "rb") as input_file:
-        boundaries: list[int] = _find_chunk_boundaries(input_file, num_cpus, ENDOFTEXT)
+        boundaries: list[int] = _find_chunk_boundaries(input_file, num_cpus * 10, ENDOFTEXT)
     with multiprocessing.Pool(num_cpus) as pool:
         for result in pool.starmap(
             pretokenize_chunk,

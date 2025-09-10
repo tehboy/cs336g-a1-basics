@@ -15,15 +15,15 @@ def main():
         special_tokens=["<|endoftext|>"],
     )
     with open(DATA_PATH / (filename + ".vocab"), "w", encoding="utf-8") as vocab_file:
-        for token in vocab:
-            vocab_file.write(f"{token}\n")
+        for token, bytes in vocab.items():
+            vocab_file.write(f"{token} {bytes}\n")
     with open(DATA_PATH / (filename + ".merge_list"), "w", encoding="utf-8") as merge_file:
         for merge in merge_list:
-            merge_file.write(f"{merge[0]} {merge[1]}\n")
+            merge_file.write(f"{merge[0] + merge[1]}\n")
 
 
 if __name__ == "__main__":
     start_time = time.time()
-    main()
+    cProfile.run('main()', sort='cumtime')
     end_time = time.time()
     print(end_time - start_time)
