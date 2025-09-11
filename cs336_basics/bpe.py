@@ -3,6 +3,7 @@ from collections import defaultdict
 from typing import BinaryIO, Iterable, TypeAlias
 
 import os
+import pickle
 import regex
 
 from .common_types import BytePair, ByteSequence, MergeList, Vocab
@@ -107,22 +108,36 @@ def _update_byte_sequence_with_bp(
     return {_replace_bps_in_bseq(k, bp): v for k, v in byte_sequence_counts.items()}
 
 
-def _pretokenize_words(input: str, special_tokens: list[str]) -> dict[ByteSequence, int]:
+def _pretokenized_word_iter(
+    input: str, special_tokens: set[str], include_special_tokens=False
+) -> Iterable[ByteSequence]:
     PRETOKEN_PATTERN = (
         r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     )
 
     def split_on_special_token(inputs: Iterable[str], token: str) -> Iterable[str]:
+        if include_special_tokens:
+            return chain.from_iterable(
+                regex.split(f"({regex.escape(token)})", input) for input in inputs
+            )
         return chain.from_iterable(input.split(token) for input in inputs)
 
     input_splits: Iterable[str] = [input]
     for token in special_tokens:
         input_splits = split_on_special_token(input_splits, token)
-    pretoken_counts: dict[ByteSequence, int] = defaultdict(int)
     for input_split in input_splits:
-        for match in regex.finditer(PRETOKEN_PATTERN, input_split):
-            word = match.captures(0)[0]
-            pretoken_counts[tuple(map(int.to_bytes, word.encode("utf-8")))] += 1
+        if include_special_tokens and input_split in special_tokens:
+            yield (input_split.encode("utf-8"),)
+        else:
+            for match in regex.finditer(PRETOKEN_PATTERN, input_split):
+                word = match.captures(0)[0]
+                yield tuple(map(int.to_bytes, word.encode("utf-8")))
+
+
+def _pretokenize_words(input: str, special_tokens: set[str]) -> dict[ByteSequence, int]:
+    pretoken_counts: dict[ByteSequence, int] = defaultdict(int)
+    for word in _pretokenized_word_iter(input, special_tokens):
+        pretoken_counts[word] += 1
     return pretoken_counts
 
 
@@ -153,7 +168,7 @@ def run_sennrich_bpe(
             chunk_data = input_file.read(end - start)
             byte_sequence_counts = _merge_byte_sequence_counts(
                 byte_sequence_counts,
-                _pretokenize_words(chunk_data.decode("utf-8"), special_tokens),
+                _pretokenize_words(chunk_data.decode("utf-8"), set(special_tokens)),
             )
     merge_list = []
     for _ in range(vocab_size - len(vocab)):
@@ -300,3 +315,64 @@ def run_nboy_bpe(
         merged_token = bp[0] + bp[1]
         vocab[len(vocab)] = merged_token
     return (vocab, merge_list)
+
+
+class Tokenizer:
+    def __init__(self, vocab: Vocab, merges: MergeList, special_tokens: list[str] | None = None):
+        """
+        Construct a tokenizer from a given vocabulary, list of merges, and (optionally) a list of special tokens.
+        """
+        self.vocab: Vocab = vocab
+        self.rvocab: dict[bytes, int] = dict((v, k) for (k, v) in vocab.items())
+        self.merges: MergeList = merges
+        self.mergemap: dict[bytes, set[bytes]] = defaultdict(set)
+        for first, second in self.merges:
+           self.mergemap[first].add(second)
+        if special_tokens is None:
+            self.special_tokens: set[str] = set()
+        else:
+            self.special_tokens: set[str] = set(special_tokens)
+
+    def _encode_byte_sequence(self, tokens: Iterable[ByteSequence]) -> Iterable[int]:
+        def apply_mergelist(current_bytes: bytes, remaining_bytes: ByteSequence):
+            if remaining_bytes and remaining_bytes[0] in self.mergemap[current_bytes]:
+                return apply_mergelist(current_bytes + remaining_bytes[0], remaining_bytes[1:])
+            return current_bytes, remaining_bytes
+        for token in tokens:
+            current_bytes, *remaining_bytes = token
+            while True:
+                current_bytes, remaining_bytes = apply_mergelist(current_bytes, remaining_bytes)
+                yield self.rvocab[current_bytes]
+                if not remaining_bytes:
+                    break
+                current_bytes, *remaining_bytes = remaining_bytes
+
+    def encode(self, text: str) -> list[int]:
+        return list(
+            self._encode_byte_sequence(
+                _pretokenized_word_iter(
+                    text, self.special_tokens, include_special_tokens=True)))
+
+    def encode_iter(self, iterable: Iterable[str]) -> Iterable[int]:
+        for word in iterable:
+            for encoding in self._encode_byte_sequence(
+                _pretokenized_word_iter(
+                    word, self.special_tokens, include_special_tokens=True)):
+                yield encoding
+
+    def decode(self, ids: list[int]) -> str:
+        decoded_bytes = b"".join(self.vocab[i] for i in ids)
+        return decoded_bytes.decode("utf-8")
+
+    @classmethod
+    def from_files(
+        cls,
+        vocab_path: str | os.PathLike,
+        merge_list_path: str | os.PathLike,
+        special_tokens: list[str] | None = None,
+    ):
+        with open(vocab_path, "rb") as vf:
+            vocab: Vocab = pickle.load(vf)
+        with open(merge_list_path, "rb") as mlf:
+            merge_list: MergeList = pickle.load(mlf)
+        return cls(vocab, merge_list, special_tokens or list())

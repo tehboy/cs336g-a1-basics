@@ -8,6 +8,7 @@ from cs336_basics import bpe
 from cs336_basics import common_types
 
 from .common import FIXTURES_PATH
+import pickle
 
 
 def byte_seq(word: str) -> common_types.ByteSequence:
@@ -262,3 +263,91 @@ def test_nboy_example():
     assert set(expected_vocab.keys()) == set(vocab.keys())
     assert set(expected_vocab.values()) == set(vocab.values())
     assert set([a + b for (a, b) in merge_list]) == set(expected_merge_list)
+
+
+def test_pretokenized_word_iter_with_special_tokens():
+    text = "foo<SPECIAL> bar<SPECIAL> baz(SPECIAL2) quux"
+    expected = [
+        byte_seq("foo"),
+        byte_seq(" bar"),
+        byte_seq(" baz"),
+        byte_seq(" quux"),
+    ]
+    expected_with_tokens = [
+        byte_seq("foo"),
+        (b'<SPECIAL>',),
+        byte_seq(" bar"),
+        (b'<SPECIAL>',),
+        byte_seq(" baz"),
+        (b'(SPECIAL2)',),
+        byte_seq(" quux"),
+    ]
+    assert list(bpe._pretokenized_word_iter(text, {"<SPECIAL>", "(SPECIAL2)"})) == expected
+    assert (
+        list(
+            bpe._pretokenized_word_iter(
+                text, {"<SPECIAL>", "(SPECIAL2)"}, include_special_tokens=True
+            )
+        )
+        == expected_with_tokens
+    )
+
+def test_tokenizer_encode_and_decode_basic():
+    vocab = {
+        0: b"a",
+        1: b"b",
+        2: b"c",
+        3: b"ab",
+        4: b"bc",
+    }
+    merges = [(b"a", b"b"), (b"b", b"c")]
+    tokenizer = bpe.Tokenizer(vocab, merges)
+    text = "abc"
+    encoded = tokenizer.encode(text)
+    assert encoded == [3, 2]
+    decoded = tokenizer.decode(encoded)
+    assert decoded == text
+
+def test_tokenizer_with_special_tokens():
+    vocab = {
+        0: b"a",
+        1: b"b",
+        2: b"<SPECIAL>",
+    }
+    merges = []
+    tokenizer = bpe.Tokenizer(vocab, merges, special_tokens=["<SPECIAL>"])
+    text = "ab<SPECIAL>b"
+    encoded = tokenizer.encode(text)
+    assert encoded == [0,1,2,1]
+    decoded = tokenizer.decode(encoded)
+    assert decoded == text
+
+def test_tokenizer_from_files(tmp_path):
+    vocab = {0: b"a", 1: b"b", 2: b"ab"}
+    merges = [(b"a", b"b")]
+    vocab_path = tmp_path / "vocab.pkl"
+    merges_path = tmp_path / "merges.pkl"
+    with open(vocab_path, "wb") as vf:
+        pickle.dump(vocab, vf)
+    with open(merges_path, "wb") as mf:
+        pickle.dump(merges, mf)
+    tokenizer = bpe.Tokenizer.from_files(vocab_path, merges_path)
+    assert isinstance(tokenizer, bpe.Tokenizer)
+    assert tokenizer.vocab == vocab
+    assert tokenizer.merges == merges
+
+def test_tokenizer_encode_empty_string():
+    vocab = {0: b"a"}
+    merges = []
+    tokenizer = bpe.Tokenizer(vocab, merges)
+    encoded = tokenizer.encode("")
+    assert encoded == []
+    decoded = tokenizer.decode(encoded)
+    assert decoded == ""
+
+def test_tokenizer_decode_unknown_id_raises():
+    vocab = {0: b"a"}
+    merges = []
+    tokenizer = bpe.Tokenizer(vocab, merges)
+    with pytest.raises(KeyError):
+        tokenizer.decode([999])
