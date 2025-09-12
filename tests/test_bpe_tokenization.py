@@ -193,9 +193,9 @@ def test_bpe_state_compute_initial_bp_counts():
     # Should count all byte pairs in both words
     expected_bps = {(b"a", b"b"), (b"b", b"c"), (b"c", b"d")}
     assert set(state.bp_counts.keys()) == expected_bps
-    assert state.bp_counts[(b"b", b"c")] == 2
-    assert state.bp_counts[(b"a", b"b")] == 1
-    assert state.bp_counts[(b"c", b"d")] == 1
+    assert state.bp_counts[(b"b", b"c")].count == 2
+    assert state.bp_counts[(b"a", b"b")].count == 1
+    assert state.bp_counts[(b"c", b"d")].count == 1
     # Should map bps to word IDs
     for bp in expected_bps:
         assert isinstance(state.word_ids_by_bp[bp], set)
@@ -275,11 +275,11 @@ def test_pretokenized_word_iter_with_special_tokens():
     ]
     expected_with_tokens = [
         byte_seq("foo"),
-        (b'<SPECIAL>',),
+        (b"<SPECIAL>",),
         byte_seq(" bar"),
-        (b'<SPECIAL>',),
+        (b"<SPECIAL>",),
         byte_seq(" baz"),
-        (b'(SPECIAL2)',),
+        (b"(SPECIAL2)",),
         byte_seq(" quux"),
     ]
     assert list(bpe._pretokenized_word_iter(text, {"<SPECIAL>", "(SPECIAL2)"})) == expected
@@ -291,6 +291,7 @@ def test_pretokenized_word_iter_with_special_tokens():
         )
         == expected_with_tokens
     )
+
 
 def test_tokenizer_encode_and_decode_basic():
     vocab = {
@@ -308,6 +309,7 @@ def test_tokenizer_encode_and_decode_basic():
     decoded = tokenizer.decode(encoded)
     assert decoded == text
 
+
 def test_tokenizer_with_special_tokens():
     vocab = {
         0: b"a",
@@ -318,9 +320,10 @@ def test_tokenizer_with_special_tokens():
     tokenizer = bpe.Tokenizer(vocab, merges, special_tokens=["<SPECIAL>"])
     text = "ab<SPECIAL>b"
     encoded = tokenizer.encode(text)
-    assert encoded == [0,1,2,1]
+    assert encoded == [0, 1, 2, 1]
     decoded = tokenizer.decode(encoded)
     assert decoded == text
+
 
 def test_tokenizer_from_files(tmp_path):
     vocab = {0: b"a", 1: b"b", 2: b"ab"}
@@ -336,6 +339,7 @@ def test_tokenizer_from_files(tmp_path):
     assert tokenizer.vocab == vocab
     assert tokenizer.merges == merges
 
+
 def test_tokenizer_encode_empty_string():
     vocab = {0: b"a"}
     merges = []
@@ -344,6 +348,7 @@ def test_tokenizer_encode_empty_string():
     assert encoded == []
     decoded = tokenizer.decode(encoded)
     assert decoded == ""
+
 
 def test_tokenizer_decode_unknown_id_raises():
     vocab = {0: b"a"}

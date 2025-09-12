@@ -1,7 +1,9 @@
 from collections.abc import Mapping, Sequence
 from collections import defaultdict
+from dataclasses import dataclass
 from typing import BinaryIO, Iterable, TypeAlias
 
+import heapq
 import os
 import pickle
 import regex
@@ -15,6 +17,7 @@ ByteSequenceCounts: TypeAlias = Mapping[ByteSequence, int]
 
 ENDOFTEXT: bytes = "<|endoftext|>".encode("utf-8")
 
+MAX_HEAP_FACTOR = 10.0
 
 def _find_chunk_boundaries(
     file: BinaryIO,
@@ -223,6 +226,20 @@ class Word:
         return (bp_diffs, old_bps - new_bps, new_bps - old_bps)
 
 
+@dataclass
+class BpHeapEntry:
+    count: int
+    bp: BytePair
+    removed: bool = False
+
+    def __lt__(self, other):
+        # heapq pops the smallest item, so invert count for max-heap
+        # If counts are equal, compare bp lexicographically (greater first)
+        if self.count != other.count:
+            return self.count > other.count
+        return self.bp > other.bp
+
+
 class BpeState:
     def __init__(self) -> None:
         self.ids_by_word: dict[ByteSequence, int] = {}
@@ -230,8 +247,9 @@ class BpeState:
         self.word_counts_by_id: dict[int, int] = defaultdict(int)
         self.next_word_id = 0
         self.word_ids_by_bp: dict[BytePair, set[int]] = defaultdict(set)
-        self.bp_counts: dict[BytePair, int] = defaultdict(int)
-        self.merge_list = list[BytePair]
+        self.bp_counts: dict[BytePair, BpHeapEntry] = {}
+        self.merge_list: list[BytePair] = []
+        self.max_heap: list[BpHeapEntry] = []
 
     def add_word(self, word: ByteSequence, count: int = 1) -> None:
         word_id = self.ids_by_word.get(word)
@@ -244,36 +262,61 @@ class BpeState:
 
     def compute_initial_bp_counts(self) -> None:
         assert len(self.bp_counts) == 0 and len(self.word_ids_by_bp) == 0
+        initial_bp_counts = defaultdict(int)
         for word_id, word_count in self.word_counts_by_id.items():
             word = self.words_by_id[word_id]
             for bp, bp_count in word.bp_counts.items():
                 self.word_ids_by_bp[bp].add(word_id)
-                self.bp_counts[bp] += bp_count * word_count
+                initial_bp_counts[bp] += bp_count * word_count
+        for bp, count in initial_bp_counts.items():
+            bp_entry = BpHeapEntry(count, bp)
+            self.bp_counts[bp] = bp_entry
+        self.max_heap = list(self.bp_counts.values())
+        heapq.heapify(self.max_heap)
 
     def compute_next_bp(self) -> BytePair | None:
-        if len(self.bp_counts) == 0:
-            return None
-        next_bp, _ = max(self.bp_counts.items(), key=lambda x: (x[1], x[0]))
-        bp_word_ids = list(self.word_ids_by_bp[next_bp])
+        while True:
+            if not self.max_heap:
+                return None
+            bp_entry: BpHeapEntry = heapq.heappop(self.max_heap)
+            if not bp_entry.removed:
+                break
+        bp_word_ids = list(self.word_ids_by_bp[bp_entry.bp])
+        all_bp_count_updates: dict[BytePair, int] = defaultdict(int)
         for word_id in bp_word_ids:
             word_count = self.word_counts_by_id[word_id]
-            word_bp_counts, removed_bps, added_bps = self.words_by_id[word_id].replace_bp(next_bp)
-            for bp, bp_count in word_bp_counts.items():
-                new_count = self.bp_counts[bp] + bp_count * word_count
-                if new_count == 0:
-                    del self.bp_counts[bp]
-                else:
-                    self.bp_counts[bp] = new_count
+            word_bp_counts, removed_bps, added_bps = self.words_by_id[word_id].replace_bp(
+                bp_entry.bp
+            )
             for removed_bp in removed_bps:
                 self.word_ids_by_bp[removed_bp].remove(word_id)
             for added_bp in added_bps:
                 self.word_ids_by_bp[added_bp].add(word_id)
-        return next_bp
+            for bp, bp_count in word_bp_counts.items():
+                all_bp_count_updates[bp] += bp_count * word_count
+        for bp, bp_count_update in all_bp_count_updates.items():
+            current_entry = self.bp_counts.get(bp)
+            new_count = bp_count_update
+            if current_entry is not None:
+                current_entry.removed = True
+                new_count += current_entry.count
+                if new_count == 0:
+                    del self.bp_counts[bp]
+            if new_count != 0:
+                new_entry = BpHeapEntry(new_count, bp)
+                self.bp_counts[bp] = new_entry
+                heapq.heappush(self.max_heap, new_entry)
+        # Sanity check to make sure we don't get too big
+        if len(self.max_heap) > len(self.bp_counts) * MAX_HEAP_FACTOR:
+            self.max_heap = list(filter(lambda bpe: not bpe.removed, self.max_heap))
+            heapq.heapify(self.max_heap)
+        return bp_entry.bp
 
 
 def pretokenize_chunk(
-    input_path: str, start: int, end: int, special_tokens
+    args: tuple[str | os.PathLike, int, int, set[str]],
 ) -> dict[ByteSequence, int]:
+    input_path, start, end, special_tokens = args
     with open(input_path, "rb") as input_file:
         input_file.seek(start)
         chunk_data = input_file.read(end - start)
@@ -295,10 +338,10 @@ def run_nboy_bpe(
     with open(input_path, "rb") as input_file:
         boundaries: list[int] = _find_chunk_boundaries(input_file, num_cpus * 10, ENDOFTEXT)
     with multiprocessing.Pool(num_cpus) as pool:
-        for result in pool.starmap(
+        for result in pool.imap_unordered(
             pretokenize_chunk,
             [
-                (input_path, start, end, special_tokens)
+                (input_path, start, end, set(special_tokens))
                 for start, end in zip(boundaries[:-1], boundaries[1:])
             ],
         ):
@@ -327,7 +370,7 @@ class Tokenizer:
         self.merges: MergeList = merges
         self.mergemap: dict[bytes, set[bytes]] = defaultdict(set)
         for first, second in self.merges:
-           self.mergemap[first].add(second)
+            self.mergemap[first].add(second)
         if special_tokens is None:
             self.special_tokens: set[str] = set()
         else:
@@ -338,6 +381,7 @@ class Tokenizer:
             if remaining_bytes and remaining_bytes[0] in self.mergemap[current_bytes]:
                 return apply_mergelist(current_bytes + remaining_bytes[0], remaining_bytes[1:])
             return current_bytes, remaining_bytes
+
         for token in tokens:
             current_bytes, *remaining_bytes = token
             while True:
@@ -350,14 +394,15 @@ class Tokenizer:
     def encode(self, text: str) -> list[int]:
         return list(
             self._encode_byte_sequence(
-                _pretokenized_word_iter(
-                    text, self.special_tokens, include_special_tokens=True)))
+                _pretokenized_word_iter(text, self.special_tokens, include_special_tokens=True)
+            )
+        )
 
     def encode_iter(self, iterable: Iterable[str]) -> Iterable[int]:
         for word in iterable:
             for encoding in self._encode_byte_sequence(
-                _pretokenized_word_iter(
-                    word, self.special_tokens, include_special_tokens=True)):
+                _pretokenized_word_iter(word, self.special_tokens, include_special_tokens=True)
+            ):
                 yield encoding
 
     def decode(self, ids: list[int]) -> str:
