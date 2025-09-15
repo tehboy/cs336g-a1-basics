@@ -19,6 +19,7 @@ ENDOFTEXT: bytes = "<|endoftext|>".encode("utf-8")
 
 MAX_HEAP_FACTOR = 10.0
 
+
 def _find_chunk_boundaries(
     file: BinaryIO,
     desired_num_chunks: int,
@@ -381,7 +382,6 @@ class Tokenizer:
             if remaining_bytes and remaining_bytes[0] in self.mergemap[current_bytes]:
                 return apply_mergelist(current_bytes + remaining_bytes[0], remaining_bytes[1:])
             return current_bytes, remaining_bytes
-
         for token in tokens:
             current_bytes, *remaining_bytes = token
             while True:
@@ -398,7 +398,7 @@ class Tokenizer:
             )
         )
 
-    def encode_iter(self, iterable: Iterable[str]) -> Iterable[int]:
+    def encode_iterable(self, iterable: Iterable[str]) -> Iterable[int]:
         for word in iterable:
             for encoding in self._encode_byte_sequence(
                 _pretokenized_word_iter(word, self.special_tokens, include_special_tokens=True)
@@ -406,8 +406,10 @@ class Tokenizer:
                 yield encoding
 
     def decode(self, ids: list[int]) -> str:
-        decoded_bytes = b"".join(self.vocab[i] for i in ids)
-        return decoded_bytes.decode("utf-8")
+        decoded_bytes = bytearray()
+        for id in ids:
+            decoded_bytes += self.vocab[id]
+        return decoded_bytes.decode(encoding="utf-8", errors="replace")
 
     @classmethod
     def from_files(
