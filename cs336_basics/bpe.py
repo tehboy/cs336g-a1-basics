@@ -1,6 +1,7 @@
 from collections.abc import Mapping, Sequence
 from collections import defaultdict
 from dataclasses import dataclass
+from itertools import count
 from typing import BinaryIO, Iterable, TypeAlias
 
 import heapq
@@ -121,13 +122,16 @@ def _pretokenized_word_iter(
 
     def split_on_special_token(inputs: Iterable[str], token: str) -> Iterable[str]:
         if include_special_tokens:
-            return chain.from_iterable(
-                regex.split(f"({regex.escape(token)})", input) for input in inputs
-            )
+            for input in inputs:
+                if input in special_tokens:
+                    yield input
+                else:
+                    for split in regex.split(f"({regex.escape(token)})", input):
+                        yield split
         return chain.from_iterable(input.split(token) for input in inputs)
 
     input_splits: Iterable[str] = [input]
-    for token in special_tokens:
+    for token in sorted(special_tokens, key=len, reverse=True):
         input_splits = split_on_special_token(input_splits, token)
     for input_split in input_splits:
         if include_special_tokens and input_split in special_tokens:
@@ -369,27 +373,39 @@ class Tokenizer:
         self.vocab: Vocab = vocab
         self.rvocab: dict[bytes, int] = dict((v, k) for (k, v) in vocab.items())
         self.merges: MergeList = merges
-        self.mergemap: dict[bytes, set[bytes]] = defaultdict(set)
-        for first, second in self.merges:
-            self.mergemap[first].add(second)
+        self.mergemap: dict[tuple[bytes, bytes], int] = {
+            merge: ord for merge, ord in zip(merges, count())
+        }
         if special_tokens is None:
             self.special_tokens: set[str] = set()
+            self.encoded_special_tokens: set[ByteSequence] = set()
         else:
             self.special_tokens: set[str] = set(special_tokens)
+            self.encoded_special_tokens: set[ByteSequence] = set(
+                (st.encode("utf-8"),) for st in special_tokens
+            )
 
     def _encode_byte_sequence(self, tokens: Iterable[ByteSequence]) -> Iterable[int]:
-        def apply_mergelist(current_bytes: bytes, remaining_bytes: ByteSequence):
-            if remaining_bytes and remaining_bytes[0] in self.mergemap[current_bytes]:
-                return apply_mergelist(current_bytes + remaining_bytes[0], remaining_bytes[1:])
-            return current_bytes, remaining_bytes
-        for token in tokens:
-            current_bytes, *remaining_bytes = token
+        def encode_token(token: list[bytes]):
             while True:
-                current_bytes, remaining_bytes = apply_mergelist(current_bytes, remaining_bytes)
-                yield self.rvocab[current_bytes]
-                if not remaining_bytes:
-                    break
-                current_bytes, *remaining_bytes = remaining_bytes
+                ord = len(self.mergemap)
+                merge_idx = -1
+                for i in range(len(token) - 1):
+                    found_ord = self.mergemap.get((token[i], token[i + 1]), ord)
+                    if found_ord < ord:
+                        ord = found_ord
+                        merge_idx = i
+                if merge_idx >= 0:
+                    token[merge_idx : merge_idx + 2] = [token[merge_idx] + token[merge_idx + 1]]
+                else:
+                    return token
+
+        for token in tokens:
+            if token in self.encoded_special_tokens:
+                yield self.rvocab[token[0]]
+            else:
+                for fully_merged_bytes in encode_token(list(token)):
+                    yield self.rvocab[fully_merged_bytes]
 
     def encode(self, text: str) -> list[int]:
         return list(
