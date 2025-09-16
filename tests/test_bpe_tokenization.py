@@ -79,7 +79,7 @@ def test_pretokenize_words_counts_words():
 
 def test_pretokenize_words_honors_special_tokens():
     text = "hello world <a> foo <a> foo <b> bar <b>"
-    counts = bpe._pretokenize_words(text, ["<a>", "<b>"])
+    counts = bpe._pretokenize_words(text, {"<a>", "<b>"})
     hello_token = byte_seq("hello")
     world_token = byte_seq(" world")
     foo_token = byte_seq(" foo")
@@ -285,8 +285,8 @@ def test_pretokenized_word_iter_with_special_tokens():
     assert list(bpe._pretokenized_word_iter(text, {"<SPECIAL>", "(SPECIAL2)"})) == expected
     assert (
         list(
-            bpe._pretokenized_word_iter(
-                text, {"<SPECIAL>", "(SPECIAL2)"}, include_special_tokens=True
+            bpe._pretokenized_word_iter_with_special_tokens(
+                text, {"<SPECIAL>", "(SPECIAL2)"}
             )
         )
         == expected_with_tokens

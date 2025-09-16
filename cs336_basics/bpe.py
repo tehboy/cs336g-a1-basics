@@ -1,24 +1,26 @@
-from collections.abc import Mapping, Sequence
-from collections import defaultdict
-from dataclasses import dataclass
-from itertools import count
-from typing import BinaryIO, Iterable, TypeAlias
-
 import heapq
+import multiprocessing
 import os
 import pickle
 import regex
 
-from .common_types import BytePair, ByteSequence, MergeList, Vocab
-from itertools import chain
+from collections.abc import Mapping, Sequence
+from collections import defaultdict
+from dataclasses import dataclass
+from itertools import chain, count
+from typing import BinaryIO, Iterable, TypeAlias
 
-import multiprocessing
+
+from .common_types import BytePair, ByteSequence, MergeList, Vocab
+from .utils import stopwatch
 
 ByteSequenceCounts: TypeAlias = Mapping[ByteSequence, int]
 
 ENDOFTEXT: bytes = "<|endoftext|>".encode("utf-8")
-
 MAX_HEAP_FACTOR = 10.0
+PRETOKEN_PATTERN = (
+    r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+)
 
 
 def _find_chunk_boundaries(
@@ -113,28 +115,33 @@ def _update_byte_sequence_with_bp(
     return {_replace_bps_in_bseq(k, bp): v for k, v in byte_sequence_counts.items()}
 
 
-def _pretokenized_word_iter(
-    input: str, special_tokens: set[str], include_special_tokens=False
-) -> Iterable[ByteSequence]:
-    PRETOKEN_PATTERN = (
-        r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-    )
-
+def _pretokenized_word_iter(input: str, special_tokens: set[str]) -> Iterable[ByteSequence]:
     def split_on_special_token(inputs: Iterable[str], token: str) -> Iterable[str]:
-        if include_special_tokens:
-            for input in inputs:
-                if input in special_tokens:
-                    yield input
-                else:
-                    for split in regex.split(f"({regex.escape(token)})", input):
-                        yield split
         return chain.from_iterable(input.split(token) for input in inputs)
 
     input_splits: Iterable[str] = [input]
     for token in sorted(special_tokens, key=len, reverse=True):
         input_splits = split_on_special_token(input_splits, token)
     for input_split in input_splits:
-        if include_special_tokens and input_split in special_tokens:
+        for match in regex.finditer(PRETOKEN_PATTERN, input_split):
+            word = match.captures(0)[0]
+            yield tuple(map(int.to_bytes, word.encode("utf-8")))
+
+
+def _pretokenized_word_iter_with_special_tokens( input: str, special_tokens: set[str]) -> Iterable[ByteSequence]:
+    def split_on_special_token(inputs: Iterable[str], token: str) -> Iterable[str]:
+        for input in inputs:
+            if input in special_tokens:
+                yield input
+            else:
+                for split in regex.split(f"({regex.escape(token)})", input):
+                    yield split
+
+    input_splits: Iterable[str] = [input]
+    for token in sorted(special_tokens, key=len, reverse=True):
+        input_splits = split_on_special_token(input_splits, token)
+    for input_split in input_splits:
+        if input_split in special_tokens:
             yield (input_split.encode("utf-8"),)
         else:
             for match in regex.finditer(PRETOKEN_PATTERN, input_split):
@@ -142,6 +149,7 @@ def _pretokenized_word_iter(
                 yield tuple(map(int.to_bytes, word.encode("utf-8")))
 
 
+@stopwatch
 def _pretokenize_words(input: str, special_tokens: set[str]) -> dict[ByteSequence, int]:
     pretoken_counts: dict[ByteSequence, int] = defaultdict(int)
     for word in _pretokenized_word_iter(input, special_tokens):
@@ -410,14 +418,14 @@ class Tokenizer:
     def encode(self, text: str) -> list[int]:
         return list(
             self._encode_byte_sequence(
-                _pretokenized_word_iter(text, self.special_tokens, include_special_tokens=True)
+                _pretokenized_word_iter_with_special_tokens(text, self.special_tokens)
             )
         )
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterable[int]:
         for word in iterable:
             for encoding in self._encode_byte_sequence(
-                _pretokenized_word_iter(word, self.special_tokens, include_special_tokens=True)
+                _pretokenized_word_iter_with_special_tokens(word, self.special_tokens)
             ):
                 yield encoding
 
