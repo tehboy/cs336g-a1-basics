@@ -1,7 +1,6 @@
 import heapq
 import multiprocessing
 import os
-import pickle
 import regex
 
 from collections.abc import Mapping, Sequence
@@ -12,16 +11,15 @@ from typing import BinaryIO, Iterable, TypeAlias
 
 
 from .common_types import BytePair, ByteSequence, MergeList, Vocab
+from .token_utils import load_vocab_and_merges
 from .utils import stopwatch
 
 ByteSequenceCounts: TypeAlias = Mapping[ByteSequence, int]
 
 ENDOFTEXT: bytes = "<|endoftext|>".encode("utf-8")
 MAX_HEAP_FACTOR = 10.0
-PRETOKEN_PATTERN = (
-    r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-)
-
+PRETOKEN_PATTERN = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+MAX_CHUNK_SIZE = 1e8
 
 def _find_chunk_boundaries(
     file: BinaryIO,
@@ -128,7 +126,9 @@ def _pretokenized_word_iter(input: str, special_tokens: set[str]) -> Iterable[By
             yield tuple(map(int.to_bytes, word.encode("utf-8")))
 
 
-def _pretokenized_word_iter_with_special_tokens( input: str, special_tokens: set[str]) -> Iterable[ByteSequence]:
+def _pretokenized_word_iter_with_special_tokens(
+    input: str, special_tokens: set[str]
+) -> Iterable[ByteSequence]:
     def split_on_special_token(inputs: Iterable[str], token: str) -> Iterable[str]:
         for input in inputs:
             if input in special_tokens:
@@ -336,20 +336,15 @@ def pretokenize_chunk(
     return _pretokenize_words(chunk_data.decode("utf-8"), special_tokens)
 
 
-def run_nboy_bpe(
-    input_path: str | os.PathLike,
-    vocab_size: int,
-    special_tokens: list[str],
-    **kwargs,
-) -> tuple[Vocab, Sequence[BytePair]]:
-    vocab: dict[int, bytes] = _initialize_vocabulary(special_tokens)
-    if len(vocab) > vocab_size:
-        ValueError("vocab_size is too low.")
+@stopwatch
+def _initialize_bpe_state(input_path: str | os.PathLike, special_tokens: list[str]) -> BpeState:
     boundaries = []
     bpe_state = BpeState()
     num_cpus = multiprocessing.cpu_count()
+    input_path_size = os.path.getsize(input_path)
+    num_chunks = max(num_cpus, int(input_path_size / MAX_CHUNK_SIZE))
     with open(input_path, "rb") as input_file:
-        boundaries: list[int] = _find_chunk_boundaries(input_file, num_cpus * 10, ENDOFTEXT)
+        boundaries: list[int] = _find_chunk_boundaries(input_file, num_chunks, ENDOFTEXT)
     with multiprocessing.Pool(num_cpus) as pool:
         for result in pool.imap_unordered(
             pretokenize_chunk,
@@ -360,8 +355,17 @@ def run_nboy_bpe(
         ):
             for word, count in result.items():
                 bpe_state.add_word(word, count)
-    merge_list = []
     bpe_state.compute_initial_bp_counts()
+    return bpe_state
+
+@stopwatch
+def _compute_vocab_and_mergelist(
+    bpe_state: BpeState, vocab_size: int, special_tokens: list[str]
+) -> tuple[Vocab, MergeList]:
+    vocab: dict[int, bytes] = _initialize_vocabulary(special_tokens)
+    if len(vocab) > vocab_size:
+        ValueError("vocab_size is too low.")
+    merge_list = []
     for _ in range(vocab_size - len(vocab)):
         bp = bpe_state.compute_next_bp()
         if bp is None:
@@ -371,6 +375,16 @@ def run_nboy_bpe(
         merged_token = bp[0] + bp[1]
         vocab[len(vocab)] = merged_token
     return (vocab, merge_list)
+
+
+def run_nboy_bpe(
+    input_path: str | os.PathLike,
+    vocab_size: int,
+    special_tokens: list[str],
+    **kwargs,
+) -> tuple[Vocab, Sequence[BytePair]]:
+    bpe_state = _initialize_bpe_state(input_path, special_tokens)
+    return _compute_vocab_and_mergelist(bpe_state, vocab_size, special_tokens)
 
 
 class Tokenizer:
@@ -442,8 +456,5 @@ class Tokenizer:
         merge_list_path: str | os.PathLike,
         special_tokens: list[str] | None = None,
     ):
-        with open(vocab_path, "rb") as vf:
-            vocab: Vocab = pickle.load(vf)
-        with open(merge_list_path, "rb") as mlf:
-            merge_list: MergeList = pickle.load(mlf)
-        return cls(vocab, merge_list, special_tokens or list())
+        vocab, merge_list = load_vocab_and_merges(vocab_path=vocab_path, merges_path=merge_list_path)
+        return cls(vocab, merge_list, special_tokens)

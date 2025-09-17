@@ -5,16 +5,15 @@ import cProfile
 from cs336_basics import bpe
 from cs336_basics.token_utils import save_vocab_and_merges
 import argparse
-import pickle
 import sys
 
 
 def main():
     logging.basicConfig(
-        level=logging.INFO,                # Set log level
+        level=logging.INFO,  # Set log level
         format="%(asctime)s %(levelname)s %(message)s",  # Set log format
-        filename="run_bpe.txt",              # Log to a file (optional)
-        filemode="w"                       # Overwrite file (optional)
+        filename="run_bpe.txt",  # Log to a file (optional)
+        filemode="w",  # Overwrite file (optional)
     )
     parser = argparse.ArgumentParser(description="Run BPE on input file.")
     parser.add_argument("input_path", type=str, help="Path to input text file")

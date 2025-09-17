@@ -6,6 +6,7 @@ import pytest
 
 from cs336_basics import bpe
 from cs336_basics import common_types
+from cs336_basics.token_utils import save_vocab_and_merges
 
 from .common import FIXTURES_PATH
 import pickle
@@ -284,11 +285,7 @@ def test_pretokenized_word_iter_with_special_tokens():
     ]
     assert list(bpe._pretokenized_word_iter(text, {"<SPECIAL>", "(SPECIAL2)"})) == expected
     assert (
-        list(
-            bpe._pretokenized_word_iter_with_special_tokens(
-                text, {"<SPECIAL>", "(SPECIAL2)"}
-            )
-        )
+        list(bpe._pretokenized_word_iter_with_special_tokens(text, {"<SPECIAL>", "(SPECIAL2)"}))
         == expected_with_tokens
     )
 
@@ -330,10 +327,8 @@ def test_tokenizer_from_files(tmp_path):
     merges = [(b"a", b"b")]
     vocab_path = tmp_path / "vocab.pkl"
     merges_path = tmp_path / "merges.pkl"
-    with open(vocab_path, "wb") as vf:
-        pickle.dump(vocab, vf)
-    with open(merges_path, "wb") as mf:
-        pickle.dump(merges, mf)
+
+    save_vocab_and_merges(vocab, merges, vocab_path=vocab_path, merges_path=merges_path)
     tokenizer = bpe.Tokenizer.from_files(vocab_path, merges_path)
     assert isinstance(tokenizer, bpe.Tokenizer)
     assert tokenizer.vocab == vocab
