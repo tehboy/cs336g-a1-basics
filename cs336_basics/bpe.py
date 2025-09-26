@@ -437,6 +437,18 @@ class TokenHeap:
         tok.set_prev(prev)
         return tok
 
+    def initialize_heap(self):
+        if not self.tok_head:
+            return
+        cur_tok: TokenBytes = self.tok_head
+        while cur_tok.next_tok is not None:
+            ord = self.mergemap.get((cur_tok.tok_bytes, cur_tok.next_tok.tok_bytes))
+            if ord is not None:
+                cur_tok.heap_entry = TokenHeapEntry(merge_order=ord, tok=cur_tok)
+                self.tok_heap.append(cur_tok.heap_entry)
+            cur_tok = cur_tok.next_tok
+        heapq.heapify(self.tok_heap)
+
     def update_merge_order(self, tok: TokenBytes | None):
         if tok is None:
             return
@@ -491,8 +503,8 @@ class Tokenizer:
             cur_token: TokenBytes | None = None
             for tok_bytes in token:
                 next_token = token_heap.add_token(tok_bytes=tok_bytes, prev=cur_token)
-                token_heap.update_merge_order(cur_token)
                 cur_token = next_token
+            token_heap.initialize_heap()
             token_heap.perform_merges()
             return token_heap.bytes_iter()
 
