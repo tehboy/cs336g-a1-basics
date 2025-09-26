@@ -247,16 +247,17 @@ def test_overlapping_special_tokens():
     # Test roundtrip
     assert tokenizer.decode(ids) == test_string
 
-def test_address_isolated():
 
+def test_address_isolated():
     tokenizer = get_tokenizer_from_vocab_merges_path(
         vocab_path=VOCAB_PATH,
         merges_path=MERGES_PATH,
     )
-    corpus_contents = ' brought'
+    corpus_contents = " brought"
 
     ids = tokenizer.encode(corpus_contents)
     assert tokenizer.decode(ids) == corpus_contents
+
 
 def test_address_roundtrip():
     tokenizer = get_tokenizer_from_vocab_merges_path(

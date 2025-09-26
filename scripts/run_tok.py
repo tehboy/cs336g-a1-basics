@@ -24,9 +24,7 @@ def main():
     parser.add_argument(
         "--profile", action="store_true", help="Profile the bpe tokenization process."
     )
-    parser.add_argument(
-        "--dry_run", action="store_true", help="Do not save bpe encoding to disk."
-    )
+    parser.add_argument("--dry_run", action="store_true", help="Do not save bpe encoding to disk.")
     args = parser.parse_args()
 
     tok = Tokenizer.from_files(args.vocab_path, args.merges_path)
@@ -36,7 +34,6 @@ def main():
         if not args.dry_run:
             arr.tofile(out_path)
         logging.info(f"Wrote {len(arr)} tokens to {out_path}")
-
 
 
 if __name__ == "__main__":

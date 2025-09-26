@@ -21,6 +21,7 @@ MAX_HEAP_FACTOR = 10.0
 PRETOKEN_PATTERN = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 MAX_CHUNK_SIZE = 1e8
 
+
 def _find_chunk_boundaries(
     file: BinaryIO,
     desired_num_chunks: int,
@@ -358,6 +359,7 @@ def _initialize_bpe_state(input_path: str | os.PathLike, special_tokens: list[st
     bpe_state.compute_initial_bp_counts()
     return bpe_state
 
+
 @stopwatch
 def _compute_vocab_and_mergelist(
     bpe_state: BpeState, vocab_size: int, special_tokens: list[str]
@@ -390,23 +392,24 @@ def run_nboy_bpe(
 @dataclass(order=True)
 class TokenHeapEntry:
     merge_order: int
-    tok: 'TokenBytes'
+    tok: "TokenBytes"
     removed: bool = field(compare=False, default=False)
+
 
 @dataclass(order=True)
 class TokenBytes:
     tok_bytes: bytes = field(compare=False)
     pos: int
-    next_tok: 'TokenBytes | None' = field(compare=False, default=None, repr=False)
-    prev_tok: 'TokenBytes | None' = field(compare=False, default=None, repr=False)
+    next_tok: "TokenBytes | None" = field(compare=False, default=None, repr=False)
+    prev_tok: "TokenBytes | None" = field(compare=False, default=None, repr=False)
     heap_entry: TokenHeapEntry | None = field(compare=False, default=None, repr=False)
 
-    def set_prev(self, tok: 'TokenBytes | None'):
+    def set_prev(self, tok: "TokenBytes | None"):
         self.prev_tok = tok
         if tok is not None:
             tok.next_tok = self
 
-    def set_next(self, tok: 'TokenBytes | None'):
+    def set_next(self, tok: "TokenBytes | None"):
         self.next_tok = tok
         if tok is not None:
             tok.prev_tok = self
@@ -431,7 +434,7 @@ class TokenHeap:
         self.tok_head = None
 
     def add_token(self, tok_bytes: bytes, prev: TokenBytes | None = None) -> TokenBytes:
-        tok = TokenBytes(tok_bytes=tok_bytes, pos=prev.pos+1 if prev else 0)
+        tok = TokenBytes(tok_bytes=tok_bytes, pos=prev.pos + 1 if prev else 0)
         if self.tok_head is None:
             self.tok_head = tok
         tok.set_prev(prev)
@@ -556,5 +559,7 @@ class Tokenizer:
         merge_list_path: str | os.PathLike,
         special_tokens: list[str] | None = None,
     ):
-        vocab, merge_list = load_vocab_and_merges(vocab_path=vocab_path, merges_path=merge_list_path)
+        vocab, merge_list = load_vocab_and_merges(
+            vocab_path=vocab_path, merges_path=merge_list_path
+        )
         return cls(vocab, merge_list, special_tokens)
