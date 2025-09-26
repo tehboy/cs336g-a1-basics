@@ -22,7 +22,7 @@ PRETOKEN_PATTERN = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+
 MAX_CHUNK_SIZE = 1e8
 
 
-def _find_chunk_boundaries(
+def find_chunk_boundaries(
     file: BinaryIO,
     desired_num_chunks: int,
     split_special_token: bytes,
@@ -178,7 +178,7 @@ def run_sennrich_bpe(
         ValueError("vocab_size is too low.")
     boundaries = []
     with open(input_path, "rb") as input_file:
-        boundaries: list[int] = _find_chunk_boundaries(input_file, 16, ENDOFTEXT)
+        boundaries: list[int] = find_chunk_boundaries(input_file, 16, ENDOFTEXT)
         byte_sequence_counts: ByteSequenceCounts = defaultdict(int)
         for start, end in zip(boundaries[:-1], boundaries[1:]):
             input_file.seek(start)
@@ -345,7 +345,7 @@ def _initialize_bpe_state(input_path: str | os.PathLike, special_tokens: list[st
     input_path_size = os.path.getsize(input_path)
     num_chunks = max(num_cpus, int(input_path_size / MAX_CHUNK_SIZE))
     with open(input_path, "rb") as input_file:
-        boundaries: list[int] = _find_chunk_boundaries(input_file, num_chunks, ENDOFTEXT)
+        boundaries: list[int] = find_chunk_boundaries(input_file, num_chunks, ENDOFTEXT)
     with multiprocessing.Pool(num_cpus) as pool:
         for result in pool.imap_unordered(
             pretokenize_chunk,

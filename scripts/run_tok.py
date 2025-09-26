@@ -1,12 +1,27 @@
 import logging
-import pathlib
 import time
 import cProfile
-from cs336_basics.bpe import _find_chunk_boundaries, Tokenizer
-from cs336_basics.token_utils import load_vocab_and_merges
+from cs336_basics.bpe import Tokenizer, find_chunk_boundaries, ENDOFTEXT
 import argparse
 import sys
 import numpy as np
+import os
+import multiprocessing
+
+# 10 MB chunks
+CHUNK_SIZE = 10 * 1024 * 1024
+
+
+def tokenize_chunk(args_tuple):
+    """Tokenizes a chunk of a file and returns a numpy array of tokens."""
+    input_path, vocab_path, merges_path, start, end = args_tuple
+    logging.info(f"Tokenizing chunk from {start} to {end}")
+    tok = Tokenizer.from_files(vocab_path, merges_path)
+    with open(input_path, "rb") as f:
+        f.seek(start)
+        chunk_data = f.read(end - start)
+        tokens = tok.encode(chunk_data.decode("utf-8", errors="replace"))
+        return np.array(tokens, dtype=np.uint16)
 
 
 def main():
@@ -27,13 +42,25 @@ def main():
     parser.add_argument("--dry_run", action="store_true", help="Do not save bpe encoding to disk.")
     args = parser.parse_args()
 
-    tok = Tokenizer.from_files(args.vocab_path, args.merges_path)
-    with open(args.input_path) as f:
-        arr = np.fromiter(tok.encode_iterable(f), dtype=np.uint16)
-        out_path = args.input_path + ".bpe"
-        if not args.dry_run:
-            arr.tofile(out_path)
-        logging.info(f"Wrote {len(arr)} tokens to {out_path}")
+    file_size = os.path.getsize(args.input_path)
+    num_chunks = max(1, file_size // CHUNK_SIZE)
+
+    with open(args.input_path, "rb") as f:
+        boundaries = find_chunk_boundaries(f, num_chunks, ENDOFTEXT)
+
+    chunk_args = [
+        (args.input_path, args.vocab_path, args.merges_path, start, end)
+        for start, end in zip(boundaries[:-1], boundaries[1:])
+    ]
+
+    with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
+        results = pool.map(tokenize_chunk, chunk_args)
+
+    arr = np.concatenate(results)
+    out_path = args.input_path + ".bpe"
+    if not args.dry_run:
+        np.save(out_path, arr)
+    logging.info(f"Wrote {len(arr)} tokens to {out_path}")
 
 
 if __name__ == "__main__":
