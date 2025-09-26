@@ -5,7 +5,7 @@ import regex
 
 from collections.abc import Mapping, Sequence
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import chain, count
 from typing import BinaryIO, Iterable, TypeAlias
 
@@ -387,6 +387,83 @@ def run_nboy_bpe(
     return _compute_vocab_and_mergelist(bpe_state, vocab_size, special_tokens)
 
 
+@dataclass(order=True)
+class TokenHeapEntry:
+    merge_order: int
+    tok: 'TokenBytes'
+    removed: bool = field(compare=False, default=False)
+
+@dataclass(order=True)
+class TokenBytes:
+    tok_bytes: bytes = field(compare=False)
+    pos: int
+    next_tok: 'TokenBytes | None' = field(compare=False, default=None, repr=False)
+    prev_tok: 'TokenBytes | None' = field(compare=False, default=None, repr=False)
+    heap_entry: TokenHeapEntry | None = field(compare=False, default=None, repr=False)
+
+    def set_prev(self, tok: 'TokenBytes | None'):
+        self.prev_tok = tok
+        if tok is not None:
+            tok.next_tok = self
+
+    def set_next(self, tok: 'TokenBytes | None'):
+        self.next_tok = tok
+        if tok is not None:
+            tok.prev_tok = self
+
+    def merge_token_with_next(self):
+        if not self.next_tok:
+            raise ValueError("Can't merge last tok.")
+        if self.next_tok.heap_entry is not None:
+            self.next_tok.heap_entry.removed = True
+        self.tok_bytes = self.tok_bytes + self.next_tok.tok_bytes
+        self.set_next(self.next_tok.next_tok)
+
+
+class TokenHeap:
+    tok_heap: list[TokenHeapEntry]
+    tok_head: TokenBytes | None
+    mergemap: dict[tuple[bytes, bytes], int]
+
+    def __init__(self, mergemap: dict[tuple[bytes, bytes], int]):
+        self.mergemap = mergemap
+        self.tok_heap = []
+        self.tok_head = None
+
+    def add_token(self, tok_bytes: bytes, prev: TokenBytes | None = None) -> TokenBytes:
+        tok = TokenBytes(tok_bytes=tok_bytes, pos=prev.pos+1 if prev else 0)
+        if self.tok_head is None:
+            self.tok_head = tok
+        tok.set_prev(prev)
+        return tok
+
+    def update_merge_order(self, tok: TokenBytes | None):
+        if tok is None:
+            return
+        if tok.heap_entry is not None:
+            tok.heap_entry.removed = True
+        if tok.next_tok is not None:
+            ord = self.mergemap.get((tok.tok_bytes, tok.next_tok.tok_bytes))
+            if ord is not None:
+                tok.heap_entry = TokenHeapEntry(merge_order=ord, tok=tok)
+                heapq.heappush(self.tok_heap, tok.heap_entry)
+
+    def perform_merges(self):
+        while self.tok_heap:
+            heap_entry = heapq.heappop(self.tok_heap)
+            if not heap_entry.removed:
+                tok = heap_entry.tok
+                tok.merge_token_with_next()
+                self.update_merge_order(tok)
+                self.update_merge_order(tok.prev_tok)
+
+    def bytes_iter(self) -> Iterable[bytes]:
+        tok = self.tok_head
+        while tok:
+            yield tok.tok_bytes
+            tok = tok.next_tok
+
+
 class Tokenizer:
     def __init__(self, vocab: Vocab, merges: MergeList, special_tokens: list[str] | None = None):
         """
@@ -408,7 +485,18 @@ class Tokenizer:
             )
 
     def _encode_byte_sequence(self, tokens: Iterable[ByteSequence]) -> Iterable[int]:
-        def encode_token(token: list[bytes]):
+        def smart_encode_token(token: list[bytes]) -> Iterable[bytes]:
+            # Initialize heap and tokens
+            token_heap: TokenHeap = TokenHeap(self.mergemap)
+            cur_token: TokenBytes | None = None
+            for tok_bytes in token:
+                next_token = token_heap.add_token(tok_bytes=tok_bytes, prev=cur_token)
+                token_heap.update_merge_order(cur_token)
+                cur_token = next_token
+            token_heap.perform_merges()
+            return token_heap.bytes_iter()
+
+        def encode_token(token: list[bytes]) -> list[bytes]:
             while True:
                 ord = len(self.mergemap)
                 merge_idx = -1

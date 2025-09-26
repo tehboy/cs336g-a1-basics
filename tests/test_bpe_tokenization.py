@@ -351,3 +351,140 @@ def test_tokenizer_decode_unknown_id_raises():
     tokenizer = bpe.Tokenizer(vocab, merges)
     with pytest.raises(KeyError):
         tokenizer.decode([999])
+
+def test_token_heap_add_token_and_bytes_iter():
+    # Test that tokens are added and bytes_iter yields them in order
+    mergemap = {}
+    heap = bpe.TokenHeap(mergemap)
+    t1 = heap.add_token(b"a")
+    t2 = heap.add_token(b"b", prev=t1)
+    t3 = heap.add_token(b"c", prev=t2)
+    assert list(heap.bytes_iter()) == [b"a", b"b", b"c"]
+    assert heap.tok_head == t1
+    assert t1.next_tok == t2
+    assert t2.next_tok == t3
+    assert t3.next_tok is None
+    assert t2.prev_tok == t1
+    assert t3.prev_tok == t2
+
+def test_token_heap_update_merge_order_and_perform_merges():
+    # Test that merges are performed according to mergemap order
+    mergemap = {(b"a", b"b"): 0, (b"ab", b"c"): 1}
+    heap = bpe.TokenHeap(mergemap)
+    t1 = heap.add_token(b"a")
+    t2 = heap.add_token(b"b", prev=t1)
+    t3 = heap.add_token(b"c", prev=t2)
+    heap.update_merge_order(t1)
+    heap.update_merge_order(t2)
+    heap.update_merge_order(t3)
+    heap.perform_merges()
+    # After merges, should have [b"abc"]
+    assert list(heap.bytes_iter()) == [b"abc"]
+
+def test_token_bytes_merge_token_with_next():
+    # Test merging two tokens
+    t1 = bpe.TokenBytes(b"a", pos=0)
+    t2 = bpe.TokenBytes(b"b", pos=1)
+    t1.set_next(t2)
+    t2.set_prev(t1)
+    t1.merge_token_with_next()
+    assert t1.tok_bytes == b"ab"
+    assert t1.next_tok is None
+
+def test_token_heap_no_merge_if_not_in_mergemap():
+    # If no merge order, bytes_iter should remain unchanged
+    heap = bpe.TokenHeap({})
+    t1 = heap.add_token(b"x")
+    t2 = heap.add_token(b"y", prev=t1)
+    heap.update_merge_order(t1)
+    heap.update_merge_order(t2)
+    heap.perform_merges()
+    assert list(heap.bytes_iter()) == [b"x", b"y"]
+
+def test_token_heap_multiple_merges():
+    # Test multiple merges in correct order
+    mergemap = {(b"a", b"b"): 0, (b"ab", b"c"): 1, (b"abc", b"d"): 2}
+    heap = bpe.TokenHeap(mergemap)
+    t1 = heap.add_token(b"a")
+    t2 = heap.add_token(b"b", prev=t1)
+    t3 = heap.add_token(b"c", prev=t2)
+    t4 = heap.add_token(b"d", prev=t3)
+    heap.update_merge_order(t1)
+    heap.update_merge_order(t2)
+    heap.update_merge_order(t3)
+    heap.update_merge_order(t4)
+    heap.perform_merges()
+    assert list(heap.bytes_iter()) == [b"abcd"]
+
+def test_token_heap_multiple_same_merge_order_by_position():
+    # Test that multiple merges of the same pair are performed in order by position
+    mergemap = {(b"x", b"y"): 1, (b"xy", b"x"): 0}
+    heap = bpe.TokenHeap(mergemap)
+    t1 = heap.add_token(b"x")
+    t2 = heap.add_token(b"y", prev=t1)
+    t3 = heap.add_token(b"x", prev=t2)
+    t4 = heap.add_token(b"y", prev=t3)
+    assert t1.pos == 0
+    assert t2.pos == 1
+    assert t3.pos == 2
+    assert t4.pos == 3
+    heap.update_merge_order(t4)
+    heap.update_merge_order(t3)
+    heap.update_merge_order(t2)
+    heap.update_merge_order(t1)
+    heap.perform_merges()
+    # First merge: t1+t2 -> b"xy", then (t1+t2)+t3 -> b"xyx"
+    assert list(heap.bytes_iter()) == [b"xyx", b"y"]
+
+def test_token_heap_merge_order_priority():
+    # Test that merges are performed according to mergemap priority
+    mergemap = {(b"a", b"b"): 2, (b"b", b"c"): 1}
+    heap = bpe.TokenHeap(mergemap)
+    t1 = heap.add_token(b"a")
+    t2 = heap.add_token(b"b", prev=t1)
+    t3 = heap.add_token(b"c", prev=t2)
+    heap.update_merge_order(t1)
+    heap.update_merge_order(t2)
+    heap.update_merge_order(t3)
+    heap.perform_merges()
+    # (b"b", b"c") has higher priority (lower value), so merge b and c first
+    assert list(heap.bytes_iter()) == [b"a", b"bc"]
+
+def test_token_heap_merge_with_non_adjacent_pairs():
+    # Test that only adjacent pairs are merged
+    mergemap = {(b"a", b"b"): 0}
+    heap = bpe.TokenHeap(mergemap)
+    t1 = heap.add_token(b"a")
+    t2 = heap.add_token(b"x", prev=t1)
+    t3 = heap.add_token(b"b", prev=t2)
+    heap.update_merge_order(t1)
+    heap.update_merge_order(t2)
+    heap.update_merge_order(t3)
+    heap.perform_merges()
+    # No merge should happen since a and b are not adjacent
+    assert list(heap.bytes_iter()) == [b"a", b"x", b"b"]
+
+def test_token_heap_merge_with_overlapping_merges():
+    # Test that merges do not overlap and are performed left to right
+    mergemap = {(b"a", b"b"): 0, (b"b", b"c"): 0}
+    heap = bpe.TokenHeap(mergemap)
+    t1 = heap.add_token(b"a")
+    t2 = heap.add_token(b"b", prev=t1)
+    t3 = heap.add_token(b"c", prev=t2)
+    heap.update_merge_order(t1)
+    heap.update_merge_order(t2)
+    heap.update_merge_order(t3)
+    heap.perform_merges()
+    # Only (a, b) should merge first, resulting in [b"ab", b"c"]
+    assert list(heap.bytes_iter()) == [b"ab", b"c"]
+
+def test_token_bytes_set_prev_and_set_next():
+    t1 = bpe.TokenBytes(b"a", pos=0)
+    t2 = bpe.TokenBytes(b"b", pos=1)
+    t1.set_next(t2)
+    assert t1.next_tok == t2
+    assert t2.prev_tok == t2  # set_next sets prev_tok to itself
+    t3 = bpe.TokenBytes(b"c", pos=3)
+    t2.set_prev(t3)
+    assert t2.prev_tok == t3
+    assert t3.next_tok == t2
