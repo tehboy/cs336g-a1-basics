@@ -9,6 +9,7 @@ import numpy.typing as npt
 import torch
 from torch import Tensor
 from cs336_basics.bpe import run_nboy_bpe, Tokenizer
+from cs336_basics.basics import Embedding, Linear, RMSNorm, SwiGLU
 
 
 def run_linear(
@@ -29,8 +30,10 @@ def run_linear(
     Returns:
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
-
-    raise NotImplementedError
+    m = Linear(d_in, d_out)
+    with torch.no_grad():
+        m.weights.data = weights
+    return m(in_features)
 
 
 def run_embedding(
@@ -51,6 +54,10 @@ def run_embedding(
     Returns:
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
+    m = Embedding(vocab_size, d_model)
+    with torch.no_grad():
+        m.weights.data = weights
+    return m(token_ids)
 
     raise NotImplementedError
 
@@ -77,14 +84,11 @@ def run_swiglu(
     Returns:
         Float[Tensor, "... d_model"]: Output embeddings of the same shape as the input embeddings.
     """
-    # Example:
-    # If your state dict keys match, you can use `load_state_dict()`
-    # swiglu.load_state_dict(weights)
-    # You can also manually assign the weights
-    # swiglu.w1.weight.data = w1_weight
-    # swiglu.w2.weight.data = w2_weight
-    # swiglu.w3.weight.data = w3_weight
-    raise NotImplementedError
+    swiglu = SwiGLU(d_model, d_ff)
+    swiglu.load_state_dict(
+        {"w1.weights": w1_weight, "w2.weights": w2_weight, "w3.weights": w3_weight}
+    )
+    return swiglu(in_features)
 
 
 def run_scaled_dot_product_attention(
@@ -379,7 +383,10 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
-    raise NotImplementedError
+    m = RMSNorm(d_model, eps)
+    with torch.no_grad():
+        m.weights.data = weights
+    return m(in_features)
 
 
 def run_silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
