@@ -5,6 +5,19 @@ from einops import einsum, rearrange
 from torch.nn import init, Module, Parameter
 
 
+def _initialize_tensor_from_dimension(
+    dim: int,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
+):
+    variance = 1 / dim
+    std_dev = math.sqrt(variance)
+    bounds = 3 * std_dev
+    tensor = torch.empty((dim,), device=device, dtype=dtype)
+    init.trunc_normal_(tensor, std=std_dev, a=-bounds, b=bounds)
+    return tensor
+
+
 def _initialize_tensor_from_dimensions(
     dim_a: int,
     dim_b: int,
@@ -70,7 +83,9 @@ class RMSNorm(Module):
         super().__init__()
         self.eps = eps
         self.d_model = d_model
-        self.weights = Parameter(torch.ones(d_model, device=device, dtype=dtype))
+        self.weights = Parameter(
+            _initialize_tensor_from_dimension(d_model, device=device, dtype=dtype)
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         in_dtype = x.dtype
