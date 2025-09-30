@@ -154,8 +154,8 @@ class RotaryPositionalEmbedding(Module):
         """
         super().__init__()
         sines, cosines = _theta_i_ks(theta, d_k, max_seq_len, device=device)
-        self.register_buffer("sines", sines)
-        self.register_buffer("cosines", cosines)
+        self.register_buffer("sines", sines, persistent=False)
+        self.register_buffer("cosines", cosines, persistent=False)
         self.d_k = d_k
 
     def forward(self, in_query_or_key: Tensor, token_positions: Tensor) -> Tensor:
@@ -198,3 +198,114 @@ def softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ...
     exps = max_adjusted.exp()
     sum_exps = exps.sum(dim=dim, keepdim=True)
     return exps / sum_exps
+
+
+def scaled_dot_product_attention(
+    Q: Float[Tensor, " ... queries d_k"],
+    K: Float[Tensor, " ... keys d_k"],
+    V: Float[Tensor, " ... values d_v"],
+    mask: Float[Tensor, " ... queries keys"] | None = None,
+) -> Float[Tensor, " ... queries d_v"]:
+    """
+    Given key (K), query (Q), and value (V) tensors, return
+    the output of your scaled dot product attention implementation.
+
+    Args:
+        Q (Float[Tensor, " ... queries d_k"]): Query tensor
+        K (Float[Tensor, " ... keys d_k"]): Key tensor
+        V (Float[Tensor, " ... values d_v"]): Values tensor
+        mask (Float[Tensor, " ... queries keys"] | None): Mask tensor
+    Returns:
+        Float[Tensor, " ... queries d_v"]: Output of SDPA
+    """
+    d_k = Q.shape[-1]
+    qt_k = einsum(Q, K, "... queries d_k, ... keys d_k -> ... queries keys")
+    qt_k_div = qt_k / math.sqrt(d_k)
+    if mask is not None:
+        qt_k_div.masked_fill_(~mask, float("-inf"))
+    sm = softmax(qt_k_div, -1)
+    return sm @ V
+
+
+class MultiHeadSelfAttention(Module):
+    """
+    Given the key, query, and value projection weights of a naive unbatched
+    implementation of multi-head attention, return the output of an optimized batched
+    implementation. This implementation should handle the key, query, and value projections
+    for all heads in a single matrix multiply.
+
+    Weights:
+        q_proj (Float[Tensor, "d_k d_in"]): Weights for the Q projection
+        k_proj (Float[Tensor, "d_k d_in"]): Weights for the K projection
+        v_proj (Float[Tensor, "d_k d_in"]): Weights for the V projection
+        o_proj (Float[Tensor, "d_model d_v"]): Weights for the output projection
+    """
+
+    q_proj: Linear
+    k_proj: Linear
+    v_proj: Linear
+    o_proj: Linear
+
+    d_model: int
+    d_k: int
+    d_v: int
+    num_heads: int
+
+    rope: RotaryPositionalEmbedding | None
+
+    """
+    Args:
+        d_model (int): Dimensionality of the feedforward input and output.
+        num_heads (int): Number of heads to use in multi-headed attention.
+    """
+
+    def __init__(
+        self,
+        d_model: int,
+        num_heads: int,
+        use_rope=True,
+        max_seq_len=1024,
+        theta=1e5,
+        device: (torch.device | None) = None,
+    ):
+        super().__init__()
+        self.d_model = d_model
+        self.num_heads = num_heads
+        assert d_model % num_heads == 0
+        self.d_k = d_model // num_heads
+        self.d_v = self.d_k
+        self.q_proj = Linear(d_model, d_model)
+        self.k_proj = Linear(d_model, d_model)
+        self.v_proj = Linear(d_model, d_model)
+        self.o_proj = Linear(d_model, d_model)
+        if use_rope:
+            self.rope = RotaryPositionalEmbedding(theta, self.d_k, max_seq_len, device=device)
+        else:
+            self.rope = None
+
+    def forward(self, x: Tensor, token_positions: Tensor|None=None) -> Tensor:
+        """
+        Args:
+            x (Float[Tensor, "... sequence_length d_in"]): Tensor to run your implementation on.
+            token_positions (Float[Tensor, "... sequence_length"])
+
+        Returns:
+            Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
+            implementation with the given QKV projection weights and input features.
+        """
+        q = rearrange(self.q_proj(x), "... s (h d) -> ... h s d", h=self.num_heads)
+        k = rearrange(self.k_proj(x), "... s (h d) -> ... h s d", h=self.num_heads)
+        v = rearrange(self.v_proj(x), "... s (h d) -> ... h s d", h=self.num_heads)
+
+        if token_positions is not None:
+            assert self.rope is not None
+            q = self.rope(q, token_positions)
+            k = self.rope(k, token_positions)
+
+        seq_len = x.shape[-2]
+        causal_mask = torch.tril(torch.ones((seq_len, seq_len), device=x.device, dtype=torch.bool))
+
+        attention_output = scaled_dot_product_attention(q, k, v, causal_mask)
+
+        combined_heads = rearrange(attention_output, "... h s d -> ... s (h d)")
+        return self.o_proj(combined_heads)

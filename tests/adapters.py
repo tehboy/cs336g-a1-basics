@@ -12,8 +12,10 @@ from cs336_basics.bpe import run_nboy_bpe, Tokenizer
 from cs336_basics.basics import (
     Embedding,
     Linear,
+    MultiHeadSelfAttention,
     RMSNorm,
     RotaryPositionalEmbedding,
+    scaled_dot_product_attention,
     softmax,
     SwiGLU,
 )
@@ -116,7 +118,7 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
+    return scaled_dot_product_attention(Q, K, V, mask)
 
 
 def run_multihead_self_attention(
@@ -150,7 +152,16 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    mhsa = MultiHeadSelfAttention(d_model, num_heads, use_rope=False)
+    mhsa.load_state_dict(
+        {
+            "q_proj.weights": q_proj_weight,
+            "k_proj.weights": k_proj_weight,
+            "v_proj.weights": v_proj_weight,
+            "o_proj.weights": o_proj_weight,
+        }
+    )
+    return mhsa(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -190,7 +201,16 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_out"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    mhsa = MultiHeadSelfAttention(d_model, num_heads, max_seq_len=max_seq_len, theta=theta)
+    mhsa.load_state_dict(
+        {
+            "q_proj.weights": q_proj_weight,
+            "k_proj.weights": k_proj_weight,
+            "v_proj.weights": v_proj_weight,
+            "o_proj.weights": o_proj_weight,
+        }
+    )
+    return mhsa(in_features, token_positions)
 
 
 def run_rope(
