@@ -9,7 +9,7 @@ import wandb
 from cs336_basics.basics import TransformerLanguageModel
 from cs336_basics.training import AdamW, get_lr_cosine_schedule, cross_entropy, gradient_clipping
 from cs336_basics.data import get_batch, save_checkpoint, load_checkpoint
-from cs336_basics.utils import ModelArgs, get_device
+from cs336_basics.utils import ModelArgs, get_device, get_gpu_memory_mb
 
 
 def setup_logging():
@@ -178,8 +178,9 @@ def main():
                 "avg_grad_norm": g,
                 "avg_epoch_loss": running_loss.item(),
                 "avg_batch_time": batch_time,
-            },
-            step=t,
+            }
+            | get_gpu_memory_mb(),
+            step=t
         )
         iter_end_time = time.time()
 

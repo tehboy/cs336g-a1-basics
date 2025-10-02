@@ -52,6 +52,25 @@ def get_device() -> torch.device:
     return torch.device(device_str)
 
 
+def get_gpu_memory_mb(prefix: str = ""):
+    if torch.cuda.is_available():
+        # Ensure all pending CUDA operations are complete before querying memory
+        torch.cuda.synchronize()
+
+        allocated = torch.cuda.memory_allocated() / (1024 * 1024)
+        reserved = torch.cuda.memory_reserved() / (1024 * 1024)
+        peak_allocated = torch.cuda.max_memory_allocated() / (1024 * 1024)
+        peak_reserved = torch.cuda.max_memory_reserved() / (1024 * 1024)
+
+        return {
+            prefix + "allocated_MB": allocated,
+            prefix + "reserved_MB": reserved,
+            prefix + "peak_allocated_MB": peak_allocated,
+            prefix + "peak_reserved_MB": peak_reserved,
+        }
+    return {}
+
+
 class ModelArgs:
     def __init__(self):
         parser = argparse.ArgumentParser(description="Model and training arguments")
