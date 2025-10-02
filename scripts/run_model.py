@@ -1,5 +1,6 @@
 import logging
 import numpy as np
+import pickle
 import random
 import sys
 import time
@@ -99,7 +100,9 @@ def main():
     else:
         t = 1
 
-    train_file = np.load(str(args.bpe_path), mmap_mode="r")
+    with open(str(args.bpe_shape_path), "rb") as f:
+        train_file_shape = pickle.load(f)
+    train_file = np.memmap(args.bpe_path, dtype=np.uint16, mode="r", shape=train_file_shape)
     logging.info(
         f"Memmapped training file: {args.bpe_path} with shape {train_file.shape} and dtype {train_file.dtype}"
     )

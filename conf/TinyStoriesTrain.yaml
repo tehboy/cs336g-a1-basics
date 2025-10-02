@@ -1,5 +1,6 @@
 txt_path: ../data/TinyStoriesV2-GPT4-train.txt
-bpe_path: ../data/TinyStoriesV2-GPT4-train.txt.bpe.npy
+bpe_path: ../data/TinyStoriesV2-GPT4-train.txt.bpe
+bpe_shape_path: ../data/TinyStoriesV2-GPT4-train.txt.bpe.shape
 vocab_path: ../data/TinyStoriesV2-GPT4-train.txt.vocab
 merges_path: ../data/TinyStoriesV2-GPT4-train.txt.merges
 checkpoint_file: ../data/TinyStoriesV2-GPT4-train.txt.checkpoint

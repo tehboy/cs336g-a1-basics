@@ -83,6 +83,7 @@ class ModelArgs:
         parser.add_argument("--vocab_path", type=str)
         parser.add_argument("--merges_path", type=str)
         parser.add_argument("--bpe_path", type=str)
+        parser.add_argument("--bpe_shape_path", type=str)
         parser.add_argument("--txt_path", type=str)
         parser.add_argument("--load_checkpoint", action="store_true")
         parser.add_argument("--checkpoint_file", type=str)

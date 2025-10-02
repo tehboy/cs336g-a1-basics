@@ -1,4 +1,5 @@
 import logging
+import pickle
 import time
 import cProfile
 from cs336_basics.bpe import Tokenizer, find_chunk_boundaries, ENDOFTEXT
@@ -49,9 +50,13 @@ def main():
     with multiprocessing.Pool(multiprocessing.cpu_count()) as pool:
         results = pool.map(tokenize_chunk, chunk_args)
 
-    arr = np.concatenate(results)
+    arr = np.concatenate(results, dtype=np.uint16)
     out_path = str(args.bpe_path)
+    out_shape_path = str(args.bpe_shape_path)
     if not args.dry_run:
+        arr.tofile(out_path)
+        with open(out_shape_path, "wb") as f:
+            pickle.dump(arr.shape, f)
         np.save(out_path, arr)
     logging.info(f"Wrote {len(arr)} tokens to {out_path}")
 
