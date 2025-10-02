@@ -169,3 +169,4 @@ profile.html
 profile.json
 run_bpe.txt
 run_tok.txt
+run_model.checkpoint

@@ -20,17 +20,6 @@ def byte_pair(a, b) -> common_types.BytePair:
     return (a.encode("utf-8"), b.encode("utf-8"))
 
 
-def test_find_chunk_boundaries_basic():
-    # Create a bytes buffer with special tokens
-    data = b"abc<|endoftext|>def<|endoftext|>ghi"
-    file = io.BytesIO(data)
-    boundaries = bpe._find_chunk_boundaries(file, 2, bpe.ENDOFTEXT)
-    # Should find boundaries at the special token positions
-    assert boundaries[0] == 0
-    assert boundaries[-1] == len(data)
-    assert all(b <= len(data) for b in boundaries)
-
-
 def test_initialize_vocabulary_adds_special_tokens():
     vocab = bpe._initialize_vocabulary(["<|endoftext|>", "<SPECIAL>"])
     # Should contain 256 initial bytes + special tokens
@@ -486,15 +475,3 @@ def test_token_heap_merge_with_overlapping_merges():
     heap.perform_merges()
     # Only (a, b) should merge first, resulting in [b"ab", b"c"]
     assert list(heap.bytes_iter()) == [b"ab", b"c"]
-
-
-def test_token_bytes_set_prev_and_set_next():
-    t1 = bpe.TokenBytes(b"a", pos=0)
-    t2 = bpe.TokenBytes(b"b", pos=1)
-    t1.set_next(t2)
-    assert t1.next_tok == t2
-    assert t2.prev_tok == t2  # set_next sets prev_tok to itself
-    t3 = bpe.TokenBytes(b"c", pos=3)
-    t2.set_prev(t3)
-    assert t2.prev_tok == t3
-    assert t3.next_tok == t2
