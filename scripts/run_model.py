@@ -17,6 +17,12 @@ def parse_args():
     parser.add_argument("--train-file", type=str, required=True, help="Path to the training file.")
     parser.add_argument("--vocab-size", type=int, required=True, help="Vocabulary size.")
     parser.add_argument(
+        "--load-checkpoint",
+        action="store_false",
+        help="Attempt to load from the checkpoint file on startup.",
+        default=False,
+    )
+    parser.add_argument(
         "--checkpoint-file",
         type=str,
         default="run_model.checkpoint",
@@ -89,6 +95,8 @@ def main():
         device=device,
         dtype=dtype,
     )
+    model.train()
+    model.to(device)
     logging.info(
         f"Initialized TransformerLanguageModel with vocab_size={args.vocab_size}, context_length={args.context_length}, d_model={args.d_model}, num_layers={args.num_layers}, num_heads={args.num_heads}, d_ff={args.d_ff}, rope_theta={args.rope_theta}, device={device}, dtype={dtype}"
     )
@@ -105,7 +113,8 @@ def main():
         f"Initialized AdamW optimizer with lr={args.lr}, weight_decay={args.weight_decay}, betas=({args.beta1}, {args.beta2}), eps={args.eps}"
     )
 
-    if "load_checkpoint" in args:
+    if args.load_checkpoint:
+        logging.info(f"Loading checkpoint from {args.checkpoint_file}")
         t = load_checkpoint(args.checkpoint_file, model, optimizer)
     else:
         t = 1
@@ -117,17 +126,35 @@ def main():
 
     logging.info("Beginning training run.")
     while t <= args.training_steps:
+        iter_start_time = time.time()
+
         # Get batch
-        inputs, next_tokens = get_batch(train_file, args.batch_size, args.context_length, device)
-        assert inputs.shape == (args.batch_size, args.context_length)
-        # Forward pass
-        logits = model(inputs)
-        # Compute loss
-        loss = cross_entropy(logits, next_tokens)
-        # Backward pass
+        batch_start_time = time.time()
+        input, target = get_batch(train_file, args.batch_size, args.context_length, device)
+        batch_end_time = time.time()
         optimizer.zero_grad()
+
+        # Forward pass
+        forward_start_time = time.time()
+        output = model(input)
+        forward_end_time = time.time()
+        # Compute loss
+        loss_start_time = time.time()
+        loss = cross_entropy(output, target)
+        loss_end_time = time.time()
+        # Backward pass
+        backward_start_time = time.time()
         loss.backward()
+        backward_end_time = time.time()
+        # Gradient clipping
+        gradient_clipping(model.parameters(), 1.0)
+        # Update weights
+        optimizer_step_start_time = time.time()
         optimizer.step()
+        optimizer_step_end_time = time.time()
+
+        iter_end_time = time.time()
+
         # Logging
         if t % args.checkpoint_interval == 1:
             checkpoint_start = time.time()
@@ -136,8 +163,17 @@ def main():
             logging.info(f"Checkpointing at step {t} (took {checkpoint_elapsed:.2f} seconds)")
         if t % 10 == 0 or t == 1:
             logging.info(f"Step {t}: loss={loss.item():.4f}")
+            logging.info(f"  get_batch time: {batch_end_time - batch_start_time:.4f}s")
+            logging.info(f"  Forward pass time: {forward_end_time - forward_start_time:.4f}s")
+            logging.info(f"  Loss calculation time: {loss_end_time - loss_start_time:.4f}s")
+            logging.info(f"  Backward pass time: {backward_end_time - backward_start_time:.4f}s")
+            logging.info(
+                f"  Optimizer step time: {optimizer_step_end_time - optimizer_step_start_time:.4f}s"
+            )
+            logging.info(f"  Total iteration time: {iter_end_time - iter_start_time:.4f}s")
         t += 1
-
+    # Final save
+    save_checkpoint(model, optimizer, t, args.checkpoint_file)
     elapsed = time.time() - start_time
     logging.info(f"Elapsed time: {elapsed:.2f} seconds")
 

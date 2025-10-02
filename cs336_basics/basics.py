@@ -113,6 +113,20 @@ class RMSNorm(Module):
         return x.to(in_dtype)
 
 
+def silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
+    """Given a tensor of inputs, return the output of applying SiLU
+    to each element.
+
+    Args:
+        in_features(Float[Tensor, "..."]): Input features to run SiLU on. Shape is arbitrary.
+
+    Returns:
+        Float[Tensor,"..."]: of with the same shape as `in_features` with the output of applying
+        SiLU to each element.
+    """
+    return in_features * torch.sigmoid(in_features)
+
+
 class SwiGLU(Module):
     # d_ff d_model
     w1: Linear
@@ -188,9 +202,13 @@ class RotaryPositionalEmbedding(Module):
         Returns:
             Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
         """
+
         sines = self.sines[token_positions]
         cosines = self.cosines[token_positions]
-
+        # Broadcast leading dimensions
+        while len(sines.shape) < len(in_query_or_key.shape):
+            sines = sines.unsqueeze(-3)
+            cosines = cosines.unsqueeze(-3)
         x1 = in_query_or_key[..., ::2]
         x2 = in_query_or_key[..., 1::2]
 
@@ -527,7 +545,7 @@ class TransformerLanguageModel(Module):
             next-word distribution for each token.
         """
         # Embedding
-        embedded_in = self.token_embeddings(in_indices.to(torch.long))
+        embedded_in = self.token_embeddings(in_indices)
         passed_through = embedded_in
         # Transformers
         for layer in self.layers:
