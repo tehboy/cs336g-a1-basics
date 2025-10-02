@@ -88,9 +88,16 @@ class ModelArgs:
         parser.add_argument("--seed", type=int)
         parser.add_argument("--checkpoint_interval", type=int)
 
+        # New arguments for run_prompt.py
+        parser.add_argument("--temperature", type=float)
+        parser.add_argument("--nucleus", type=float)
+        parser.add_argument("--max_tokens", type=int)
+        parser.add_argument("--prompt", type=str)
+        parser.add_argument("--prompt_file", type=str)
+
         # New argument for model file
         parser.add_argument(
-            "--model-file", type=str, help="Path to a YAML file with model arguments."
+            "--model_file", type=str, help="Path to a YAML file with model arguments."
         )
 
         self.parser = parser
@@ -129,6 +136,9 @@ class ModelArgs:
             "eps": 1e-8,
             "seed": 1337,
             "checkpoint_interval": 10,
+            "temperature": 0.7,
+            "nucleus": 0.9,
+            "max_tokens": 100,
         }
 
     def __getattr__(self, name):

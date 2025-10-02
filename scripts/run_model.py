@@ -124,7 +124,7 @@ def main():
         batch_losses = []
         batch_times = []
         batch_grads = []
-        for batch_n in range(int(args.batch_size)):
+        for batch_n in range(int(args.num_batches)):
             batch_start_time = time.time()
             input, target = get_batch(
                 train_file, int(args.batch_size), int(args.context_length), device

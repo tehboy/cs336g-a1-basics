@@ -69,7 +69,7 @@ def save_checkpoint(
 def load_checkpoint(
     src: str | os.PathLike | BinaryIO | IO[bytes],
     model: torch.nn.Module,
-    optimizer: torch.optim.Optimizer,
+    optimizer: torch.optim.Optimizer | None = None,
 ):
     """
     Given a serialized checkpoint (path or file-like object), restore the
@@ -80,11 +80,12 @@ def load_checkpoint(
     Args:
         src (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialized checkpoint.
         model (torch.nn.Module): Restore the state of this model.
-        optimizer (torch.optim.Optimizer): Restore the state of this optimizer.
+        optimizer (torch.optim.Optimizer, optional): Restore the state of this optimizer.
     Returns:
         int: the previously-serialized number of iterations.
     """
     saved_state = torch.load(src)
     model.load_state_dict(saved_state["model"])
-    optimizer.load_state_dict(saved_state["optimizer"])
+    if optimizer is not None:
+        optimizer.load_state_dict(saved_state["optimizer"])
     return saved_state["iteration"]
