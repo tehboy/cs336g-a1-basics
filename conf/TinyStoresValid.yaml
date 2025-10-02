@@ -1,0 +1,4 @@
+txt_path: ../data/TinyStoriesV2-GPT4-valid.txt
+bpe_path: ../data/TinyStoriesV2-GPT4-valid.txt.bpe.npy
+vocab_path: ../data/TinyStoriesV2-GPT4-valid.txt.vocab
+merges_path: ../data/TinyStoriesV2-GPT4-valid.txt.merges

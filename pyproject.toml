@@ -23,6 +23,7 @@ dependencies = [
     "ruff",
     "bidict",
     "wandb",
+    "pyyaml",
 ]
 
 [build-system]

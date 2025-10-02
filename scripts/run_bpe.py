@@ -4,8 +4,8 @@ import time
 import cProfile
 from cs336_basics import bpe
 from cs336_basics.token_utils import save_vocab_and_merges
-import argparse
 import sys
+from cs336_basics.utils import ModelArgs
 
 
 def main():
@@ -15,34 +15,25 @@ def main():
         filename="run_bpe.txt",  # Log to a file (optional)
         filemode="w",  # Overwrite file (optional)
     )
-    parser = argparse.ArgumentParser(description="Run BPE on input file.")
-    parser.add_argument("input_path", type=str, help="Path to input text file")
-    parser.add_argument("--vocab_size", type=int, default=500, help="Vocabulary size")
-    parser.add_argument(
-        "--special_tokens", type=str, nargs="+", default=["<|endoftext|>"], help="Special tokens"
-    )
-    parser.add_argument(
-        "--profile", action="store_true", help="Profile the bpe tokenization process."
-    )
-    parser.add_argument(
-        "--dry_run", action="store_true", help="Do not save vocab and merges to disk."
-    )
-    args = parser.parse_args()
+    args = ModelArgs()
 
-    input_path = pathlib.Path(args.input_path)
+    input_path = pathlib.Path(str(args.txt_path))
     if not input_path.is_file():
         raise FileNotFoundError(f"Input path '{input_path}' does not point to a valid file.")
 
     vocab, merge_list = bpe.run_nboy_bpe(
         input_path=input_path,
-        vocab_size=args.vocab_size,
-        special_tokens=args.special_tokens,
+        vocab_size=int(args.vocab_size),
+        special_tokens=list(args.special_tokens) if args.special_tokens is not None else [],
     )
 
+    logging.info(
+        f"dry_run: {args.dry_run}, save_vocab_and_merges(vocab, merge_list, vocab_path={args.vocab_path}, merges_path={args.merges_path})"
+    )
     if not args.dry_run:
-        vocab_path = input_path.with_suffix(input_path.suffix + ".vocab")
-        merges_path = input_path.with_suffix(input_path.suffix + ".merges")
-        save_vocab_and_merges(vocab, merge_list, vocab_path=vocab_path, merges_path=merges_path)
+        save_vocab_and_merges(
+            vocab, merge_list, vocab_path=str(args.vocab_path), merges_path=str(args.merges_path)
+        )
 
 
 if __name__ == "__main__":
