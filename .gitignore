@@ -170,3 +170,9 @@ profile.json
 run_bpe.txt
 run_tok.txt
 run_model.checkpoint
+wandb/latest-run
+wandb/run-20251002_190549-nxylb27g/run-nxylb27g.wandb
+.gitignore
+wandb/run-20251002_190549-nxylb27g/files/wandb-metadata.json
+wandb/run-20251002_190549-nxylb27g/files/wandb-summary.json
+wandb/run-20251002_190549-nxylb27g/files/config.yaml
