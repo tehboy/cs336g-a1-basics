@@ -180,7 +180,7 @@ def main():
                 "avg_batch_time": batch_time,
             }
             | get_gpu_memory_mb(),
-            step=t
+            step=t,
         )
         iter_end_time = time.time()
 

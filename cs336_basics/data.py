@@ -34,14 +34,20 @@ def get_batch(
         device = torch.device(device)
     # Random starting points
     starting_points = np.random.choice(len(dataset) - context_length, batch_size, replace=False)
-    # Build indices for all batch rows
-    indices = starting_points[:, None] + np.arange(context_length)[None, :]
-    inputs_np = dataset[indices]
-    next_tokens_np = dataset[indices + 1]
-    inputs = torch.as_tensor(inputs_np, dtype=torch.long, device=device)
-    next_tokens = torch.as_tensor(next_tokens_np, dtype=torch.long, device=device)
+    starting_points = np.sort(starting_points)
 
-    return inputs, next_tokens
+    inputs = torch.empty((batch_size, context_length), dtype=torch.long)
+    next_tokens = torch.empty((batch_size, context_length), dtype=torch.long)
+    # Build indices for all batch rows
+    for n, starting_point in zip(count(), starting_points):
+        inputs[n] = torch.from_numpy(
+            dataset[starting_point : starting_point + context_length]
+        ).long()
+        next_tokens[n] = torch.from_numpy(
+            dataset[starting_point + 1 : starting_point + 1 + context_length]
+        ).long()
+
+    return inputs.to(device), next_tokens.to(device)
 
 
 def save_checkpoint(
