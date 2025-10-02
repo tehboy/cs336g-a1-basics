@@ -22,6 +22,7 @@ from cs336_basics.basics import (
     scaled_dot_product_attention,
     silu,
     softmax,
+    softmax_,
     SwiGLU,
     TransformerLanguageModel,
 )
@@ -473,6 +474,22 @@ def run_get_batch(
         language modeling labels.
     """
     return data.get_batch(dataset, batch_size, context_length, device)
+
+
+def run_softmax_(in_features: Float[Tensor, " ..."], dim: int):
+    """
+    Given a tensor of inputs, return the output of softmaxing the given `dim`
+    of the input.
+
+    Args:
+        in_features (Float[Tensor, "..."]): Input features to softmax. Shape is arbitrary.
+        dim (int): Dimension of the `in_features` to apply softmax to.
+
+    Returns:
+        Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
+        softmax normalizing the specified `dim`.
+    """
+    return softmax_(in_features, dim)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:

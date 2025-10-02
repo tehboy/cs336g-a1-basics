@@ -3,7 +3,40 @@ import torch
 import torch.nn.functional as F
 from torch.nn.utils.clip_grad import clip_grad_norm_
 
-from .adapters import run_cross_entropy, run_gradient_clipping, run_softmax
+from .adapters import run_cross_entropy, run_gradient_clipping, run_softmax, run_softmax_
+
+
+def test_softmax__matches_pytorch():
+    x = torch.tensor(
+        [
+            [0.4655, 0.8303, 0.9608, 0.9656, 0.6840],
+            [0.2583, 0.2198, 0.9334, 0.2995, 0.1722],
+            [0.1573, 0.6860, 0.1327, 0.7284, 0.6811],
+        ]
+    )
+
+    expected = F.softmax(x, dim=-1)
+    run_softmax_(x, dim=-1)
+    numpy.testing.assert_allclose(
+        x.detach().numpy(),
+        expected.detach().numpy(),
+        atol=1e-6,
+    )
+    # Test that softmax handles numerical overflow issues
+    x = torch.tensor(
+        [
+            [0.4655, 0.8303, 0.9608, 0.9656, 0.6840],
+            [0.2583, 0.2198, 0.9334, 0.2995, 0.1722],
+            [0.1573, 0.6860, 0.1327, 0.7284, 0.6811],
+        ]
+    )
+    x.add_(100)
+    run_softmax_(x, dim=-1)
+    numpy.testing.assert_allclose(
+        x.detach().numpy(),
+        expected.detach().numpy(),
+        atol=1e-6,
+    )
 
 
 def test_softmax_matches_pytorch():

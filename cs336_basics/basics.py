@@ -219,6 +219,22 @@ class RotaryPositionalEmbedding(Module):
         return out
 
 
+def softmax_(in_features: Float[Tensor, " ..."], dim: int):
+    """
+    Given a tensor of inputs, return the output of softmaxing the given `dim`
+    of the input.
+
+    Args:
+        in_features (Float[Tensor, "..."]): Input features to softmax. Shape is arbitrary.
+        dim (int): Dimension of the `in_features` to apply softmax to.
+    """
+    # softmax(v_i) is exp(v_i - max(v)) / sum(exp(v - max(v)))
+    max_values = in_features.max(dim=dim, keepdim=True)[0]
+    in_features.sub_(max_values).exp_()
+    sum_exps = in_features.sum(dim=dim, keepdim=True)
+    in_features.div_(sum_exps)
+
+
 def softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:
     """
     Given a tensor of inputs, return the output of softmaxing the given `dim`
@@ -523,6 +539,7 @@ class TransformerLanguageModel(Module):
             num_layers (int): The number of Transformer layers to use.
         """
         super().__init__()
+        self.context_length = context_length
         d_k = d_model // num_heads
         self.rope = RotaryPositionalEmbedding(
             rope_theta, d_k, context_length, device=device, dtype=dtype
