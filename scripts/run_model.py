@@ -42,7 +42,21 @@ def parse_args():
         default="float32",
         help="Torch dtype (e.g., float32, float16, bfloat16).",
     )
-    parser.add_argument("--lr", type=float, default=1e-3, help="AdamW learning rate.")
+    parser.add_argument(
+        "--max-lr", type=float, default=1e-3, help="Maximum learning rate for cosine schedule."
+    )
+    parser.add_argument(
+        "--min-lr", type=float, default=1e-4, help="Minimum learning rate for cosine schedule."
+    )
+    parser.add_argument(
+        "--warmup-iters", type=int, default=100, help="Number of warmup iterations."
+    )
+    parser.add_argument(
+        "--cosine-cycle-iters",
+        type=int,
+        default=1000,
+        help="Number of iterations for a cosine cycle.",
+    )
     parser.add_argument("--weight-decay", type=float, default=0.01, help="AdamW weight decay.")
     parser.add_argument("--beta1", type=float, default=0.9, help="AdamW beta1.")
     parser.add_argument("--beta2", type=float, default=0.999, help="AdamW beta2.")
@@ -104,13 +118,13 @@ def main():
     # Initialize AdamW optimizer
     optimizer = AdamW(
         model.parameters(),
-        lr=args.lr,
+        lr=args.max_lr,
         weight_decay=args.weight_decay,
         betas=(args.beta1, args.beta2),
         eps=args.eps,
     )
     logging.info(
-        f"Initialized AdamW optimizer with lr={args.lr}, weight_decay={args.weight_decay}, betas=({args.beta1}, {args.beta2}), eps={args.eps}"
+        f"Initialized AdamW optimizer with weight_decay={args.weight_decay}, betas=({args.beta1}, {args.beta2}), eps={args.eps}"
     )
 
     if args.load_checkpoint:
@@ -127,6 +141,13 @@ def main():
     logging.info("Beginning training run.")
     while t <= args.training_steps:
         iter_start_time = time.time()
+
+        # Update learning rate
+        lr = get_lr_cosine_schedule(
+            t, args.max_lr, args.min_lr, args.warmup_iters, args.cosine_cycle_iters
+        )
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = lr
 
         # Get batch
         batch_start_time = time.time()
@@ -162,7 +183,7 @@ def main():
             checkpoint_elapsed = time.time() - checkpoint_start
             logging.info(f"Checkpointing at step {t} (took {checkpoint_elapsed:.2f} seconds)")
         if t % 10 == 0 or t == 1:
-            logging.info(f"Step {t}: loss={loss.item():.4f}")
+            logging.info(f"Step {t}: loss={loss.item():.4f}, lr={lr:.6f}")
             logging.info(f"  get_batch time: {batch_end_time - batch_start_time:.4f}s")
             logging.info(f"  Forward pass time: {forward_end_time - forward_start_time:.4f}s")
             logging.info(f"  Loss calculation time: {loss_end_time - loss_start_time:.4f}s")
