@@ -112,13 +112,14 @@ class ModelArgs:
         parser.add_argument("--checkpoint_interval", type=int)
         parser.add_argument("--validation_interval", type=int)
         parser.add_argument("--num_validation_batches", type=int)
-
-        # New arguments for run_prompt.py
         parser.add_argument("--temperature", type=float)
         parser.add_argument("--nucleus", type=float)
         parser.add_argument("--max_tokens", type=int)
         parser.add_argument("--prompt", type=str)
         parser.add_argument("--prompt_file", type=str)
+        parser.add_argument("--ablate_norms", action="store_true")
+        parser.add_argument("--ablate_position_embeddings", action="store_true")
+        parser.add_argument("--use_silu", action="store_true")
 
         # New argument for model file
         parser.add_argument(
@@ -166,6 +167,9 @@ class ModelArgs:
             "max_tokens": 100,
             "validation_interval": 100,
             "num_validation_batches": 4,
+            "ablate_norms": False,
+            "ablate_position_embeddings": False,
+            "use_silu": False,
         }
 
     def __getattr__(self, name):

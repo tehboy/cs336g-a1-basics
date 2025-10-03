@@ -76,6 +76,9 @@ def main():
         rope_theta=float(args.rope_theta),
         device=device,
         dtype=dtype,
+        use_norms=(not args.ablate_norms),
+        use_rope=(not args.ablate_position_embeddings),
+        use_silu=args.use_silu,
     )
     model.train()
     model.to(device)
@@ -112,7 +115,7 @@ def main():
         valid_file_shape = pickle.load(f)
     valid_file = np.memmap(args.valid_bpe_path, dtype=np.uint16, mode="r", shape=valid_file_shape)
     logging.info(
-        f"Memmapped validation file: {args.valid_bpe_path} with shape {valid_file.shape.shape} and dtype {valid_file.dtype}"
+        f"Memmapped validation file: {args.valid_bpe_path} with shape {valid_file.shape} and dtype {valid_file.dtype}"
     )
 
     logging.info("Beginning training run.")
@@ -211,7 +214,7 @@ def main():
             model.train()
             validation_end_time = time.time()
             logging.info(
-                f"  Validation step time: {validation_start_time - validation_end_time:.4f}s"
+                f"  Validation step time: {validation_end_time - validation_start_time:.4f}s"
             )
 
         run.log(to_log, step=t)

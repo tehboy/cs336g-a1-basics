@@ -126,6 +126,22 @@ def silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
     """
     return in_features * torch.sigmoid(in_features)
 
+class SiLU(Module):
+    # d_ff d_model
+    w1: Linear
+    # d_model dff
+    w2: Linear
+
+    def __init__(self, d_model: int, d_ff: int, device=None, dtype=None):
+        super().__init__()
+        self.w1 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.w2 = Linear(d_ff, d_model, device=device, dtype=dtype)
+
+    # x: ... d_model
+    def forward(self, x: Tensor) -> Tensor:
+        w1_x = self.w1(x)
+        silu = w1_x * torch.sigmoid(w1_x)
+        return self.w2(silu)
 
 class SwiGLU(Module):
     # d_ff d_model
@@ -355,8 +371,6 @@ class MultiHeadSelfAttention(Module):
             assert token_positions is not None
             q = self.rope(q, token_positions)
             k = self.rope(k, token_positions)
-        else:
-            assert token_positions is None
         seq_len = x.shape[-2]
         causal_mask = torch.tril(torch.ones((seq_len, seq_len), device=x.device, dtype=torch.bool))
 
@@ -411,18 +425,20 @@ class PreNormTransformer(Module):
     """
 
     attn: MultiHeadSelfAttention
-    ln1: RMSNorm
-    ln2: RMSNorm
-    ffn: SwiGLU
+    ln1: RMSNorm | None
+    ln2: RMSNorm | None
+    ffn: Module
 
     def __init__(
         self,
         d_model: int,
         num_heads: int,
         d_ff: int,
-        rope: RotaryPositionalEmbedding,
+        rope: RotaryPositionalEmbedding | None,
         device=None,
         dtype=None,
+        use_norms=True,
+        use_silu=False,
     ):
         """
 
@@ -433,9 +449,16 @@ class PreNormTransformer(Module):
         """
         super().__init__()
         self.attn = MultiHeadSelfAttention(d_model, num_heads, rope)
-        self.ln1 = RMSNorm(d_model, device=device, dtype=dtype)
-        self.ln2 = RMSNorm(d_model, device=device, dtype=dtype)
-        self.ffn = SwiGLU(d_model, d_ff)
+        if use_norms:
+            self.ln1 = RMSNorm(d_model, device=device, dtype=dtype)
+            self.ln2 = RMSNorm(d_model, device=device, dtype=dtype)
+        else:
+            self.ln1 = None
+            self.ln2 = None
+        if use_silu:
+            self.ffn = SiLU(d_model, d_ff, device=device, dtype=dtype)
+        else:
+            self.ffn = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
 
     def forward(self, attn_in: Tensor):
         """
@@ -447,13 +470,13 @@ class PreNormTransformer(Module):
             running the Transformer block on the input features while using RoPE.
         """
         batch_size, sequence_length, _ = attn_in.shape
-        attn_norm = self.ln1(attn_in)
+        attn_norm = self.ln1(attn_in) if self.ln1 is not None else attn_in
         token_positions = torch.arange(sequence_length, device=attn_in.device).expand(
             batch_size, -1
         )
         attn_out = self.attn(attn_norm, token_positions)
         ff_in = attn_in + attn_out
-        ffn_norm = self.ln2(ff_in)
+        ffn_norm = self.ln2(ff_in) if self.ln2 is not None else ff_in
         ffn_out = self.ffn(ffn_norm)
         return ff_in + ffn_out
 
@@ -515,7 +538,7 @@ class TransformerLanguageModel(Module):
     layers: torch.nn.ModuleList
     ln_final: RMSNorm
     lm_head: Linear
-    rope: RotaryPositionalEmbedding
+    rope: RotaryPositionalEmbedding | None
 
     def __init__(
         self,
@@ -528,6 +551,9 @@ class TransformerLanguageModel(Module):
         rope_theta: float,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
+        use_norms=True,
+        use_rope=True,
+        use_silu=False,
     ):
         """
         Args:
@@ -541,12 +567,24 @@ class TransformerLanguageModel(Module):
         super().__init__()
         self.context_length = context_length
         d_k = d_model // num_heads
-        self.rope = RotaryPositionalEmbedding(
-            rope_theta, d_k, context_length, device=device, dtype=dtype
-        )
+        if use_rope:
+            self.rope = RotaryPositionalEmbedding(
+                rope_theta, d_k, context_length, device=device, dtype=dtype
+            )
+        else:
+            self.rope = None
         self.token_embeddings = Embedding(vocab_size, d_model, device=device, dtype=dtype)
         self.layers = torch.nn.ModuleList(
-            PreNormTransformer(d_model, num_heads, d_ff, self.rope, device=device, dtype=dtype)
+            PreNormTransformer(
+                d_model,
+                num_heads,
+                d_ff,
+                self.rope,
+                device=device,
+                dtype=dtype,
+                use_norms=use_norms,
+                use_silu=use_silu
+            )
             for _ in range(num_layers)
         )
         self.ln_final = RMSNorm(d_model, device=device, dtype=dtype)
