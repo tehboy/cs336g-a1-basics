@@ -90,6 +90,7 @@ class ModelArgs:
         parser.add_argument("--valid_bpe_shape_path", type=str)
         parser.add_argument("--load_checkpoint", action="store_true")
         parser.add_argument("--checkpoint_file", type=str)
+        parser.add_argument("--validation_checkpoint_file", type=str)
         parser.add_argument("--training_steps", type=int)
         parser.add_argument("--batch_size", type=int)
         parser.add_argument("--num_batches", type=int)

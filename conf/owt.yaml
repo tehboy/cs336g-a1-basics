@@ -7,6 +7,7 @@ valid_bpe_shape_path: ../data/owt-valid.txt.bpe.shape
 vocab_path: ../data/owt.vocab
 merges_path: ../data/owt.merges
 checkpoint_file: ../data/owt-train.txt.checkpoint
+validaation_checkpoint_file: ../data/owt-train.txt.checkpoint
 vocab_size: 10000
 context_length: 256
 d_model: 512

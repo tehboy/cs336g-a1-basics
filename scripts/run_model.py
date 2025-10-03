@@ -11,6 +11,7 @@ from cs336_basics.basics import TransformerLanguageModel
 from cs336_basics.training import AdamW, get_lr_cosine_schedule, cross_entropy, gradient_clipping
 from cs336_basics.data import get_batch, save_checkpoint, load_checkpoint
 from cs336_basics.utils import ModelArgs, get_device
+import os
 
 
 def setup_logging():
@@ -103,6 +104,14 @@ def main():
         t = load_checkpoint(str(args.checkpoint_file), model, optimizer)
     else:
         t = 1
+
+    best_validation_loss = float("inf")
+    if os.path.exists(str(args.validation_checkpoint_file)):
+        logging.info(
+            f"Validation checkpoint file {args.validation_checkpoint_file} exists. Loading best validation loss."
+        )
+        best_validation_loss = torch.load(args.validation_checkpoint_file)["loss"]
+        logging.info(f"Loaded best validation loss: {best_validation_loss}")
 
     with open(str(args.bpe_shape_path), "rb") as f:
         train_file_shape = pickle.load(f)
@@ -209,6 +218,11 @@ def main():
                     validation_output = model(validation_input)
                     validation_loss += cross_entropy(validation_output, validation_target).item()
                 avg_validation_loss = validation_loss / args.num_validation_batches
+                if avg_validation_loss < best_validation_loss:
+                    best_validation_loss = avg_validation_loss
+                    save_checkpoint(
+                        model, optimizer, t, args.validation_checkpoint_file, best_validation_loss
+                    )
                 logging.info(f"Step {t} Validation : loss={avg_validation_loss:.4f}")
                 to_log["validation_loss"] = avg_validation_loss
             model.train()

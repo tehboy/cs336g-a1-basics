@@ -126,6 +126,7 @@ def silu(in_features: Float[Tensor, " ..."]) -> Float[Tensor, " ..."]:
     """
     return in_features * torch.sigmoid(in_features)
 
+
 class SiLU(Module):
     # d_ff d_model
     w1: Linear
@@ -142,6 +143,7 @@ class SiLU(Module):
         w1_x = self.w1(x)
         silu = w1_x * torch.sigmoid(w1_x)
         return self.w2(silu)
+
 
 class SwiGLU(Module):
     # d_ff d_model
@@ -583,7 +585,7 @@ class TransformerLanguageModel(Module):
                 device=device,
                 dtype=dtype,
                 use_norms=use_norms,
-                use_silu=use_silu
+                use_silu=use_silu,
             )
             for _ in range(num_layers)
         )

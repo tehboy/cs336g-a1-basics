@@ -64,6 +64,7 @@ def save_checkpoint(
     optimizer: torch.optim.Optimizer,
     iteration: int,
     out: str | os.PathLike | BinaryIO | IO[bytes],
+    loss: int | None = None,
 ):
     """
     Given a model, optimizer, and an iteration number, serialize them to disk.
@@ -76,7 +77,12 @@ def save_checkpoint(
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
     torch.save(
-        {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "iteration": iteration},
+        {
+            "model": model.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "iteration": iteration,
+            "loss": loss,
+        },
         out,
     )
 

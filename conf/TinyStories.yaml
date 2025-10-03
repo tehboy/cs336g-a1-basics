@@ -7,6 +7,7 @@ valid_bpe_shape_path: ../data/TinyStoriesV2-GPT4-valid.txt.bpe.shape
 vocab_path: ../data/TinyStoriesV2-GPT4-train.txt.vocab
 merges_path: ../data/TinyStoriesV2-GPT4-train.txt.merges
 checkpoint_file: ../data/TinyStoriesV2-GPT4-train.txt.checkpoint
+validation_checkpoint_file: ../data/TinyStoriesV2-GPT4-train.txt.best.checkpoint
 vocab_size: 10000
 context_length: 256
 d_model: 512
