@@ -18,3 +18,5 @@ num_heads: 16
 batch_size: 64
 num_batches: 2
 training_steps: 1250
+max_lr: 0.01
+min_lr: 0.001
