@@ -25,10 +25,10 @@ def cross_entropy(
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
     max_values = inputs.max(dim=-1, keepdim=True)[0]
-    log_sum_exp = (inputs - max_values).exp().sum(dim=-1, keepdim=True).log()
-    log_probs_at_targets = inputs.gather(dim=-1, index=targets.unsqueeze(-1)).squeeze(-1)
-    loss = -(log_probs_at_targets - (max_values.squeeze(-1) + log_sum_exp.squeeze(-1)))
-    return loss.mean()
+    max_adjusted = inputs - max_values
+    exp_sum_adusted = max_adjusted - max_adjusted.exp().sum(dim=-1, keepdim=True).log()
+    correct_class_probs = exp_sum_adusted.gather(dim=-1, index=targets.unsqueeze(-1)).squeeze(-1)
+    return -correct_class_probs.mean()
 
 
 class SGD(torch.optim.Optimizer):
