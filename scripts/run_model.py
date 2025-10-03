@@ -100,9 +100,9 @@ def main():
     else:
         t = 1
 
-    with open(str(args.bpe_shape_path), 'rb') as f:
+    with open(str(args.bpe_shape_path), "rb") as f:
         train_file_shape = pickle.load(f)
-    train_file = np.memmap(args.bpe_path, dtype=np.uint16, mode='r', shape=train_file_shape)
+    train_file = np.memmap(args.bpe_path, dtype=np.uint16, mode="r", shape=train_file_shape)
     logging.info(
         f"Memmapped training file: {args.bpe_path} with shape {train_file.shape} and dtype {train_file.dtype}"
     )
@@ -148,7 +148,9 @@ def main():
             loss.backward()
             backward_end_time = time.time()
             # Gradient clipping
+            gradient_clip_start_time = time.time()
             batch_grads.append(gradient_clipping(model.parameters(), 1.0))
+            gradient_clip_end_time = time.time()
             # Update weights
             optimizer_step_start_time = time.time()
             optimizer.step()
@@ -164,6 +166,9 @@ def main():
                 logging.info(f"  Loss calculation time: {loss_end_time - loss_start_time:.4f}s")
                 logging.info(
                     f"  Backward pass time: {backward_end_time - backward_start_time:.4f}s"
+                )
+                logging.info(
+                    f"  Gradient clip time: {gradient_clip_end_time - gradient_clip_start_time:.4f}s"
                 )
                 logging.info(
                     f"  Optimizer step time: {optimizer_step_end_time - optimizer_step_start_time:.4f}s"
