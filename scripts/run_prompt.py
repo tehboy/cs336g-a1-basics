@@ -37,9 +37,10 @@ def main():
         dtype=dtype,
     )
     model.to(device)
+    model.eval()
 
     # Load checkpoint
-    if args.checkpoint_file:
+    if args.validation_checkpoint_file:
         load_checkpoint(str(args.checkpoint_file), model)
     else:
         print("Warning: No checkpoint file provided. Using an untrained model.")
