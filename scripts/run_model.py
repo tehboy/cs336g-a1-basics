@@ -106,12 +106,15 @@ def main():
         t = 1
 
     best_validation_loss = float("inf")
+    best_validation_t = None
     if os.path.exists(str(args.validation_checkpoint_file)):
         logging.info(
             f"Validation checkpoint file {args.validation_checkpoint_file} exists. Loading best validation loss."
         )
-        best_validation_loss = torch.load(args.validation_checkpoint_file)["loss"]
-        logging.info(f"Loaded best validation loss: {best_validation_loss}")
+        validation_checkpoint = torch.load(args.validation_checkpoint_file)
+        best_validation_loss = validation_checkpoint["loss"]
+        best_validation_t = validation_checkpoint['iteration']
+        logging.info(f"Loaded best validation loss: {best_validation_loss} at t: {best_validation_t}")
 
     with open(str(args.bpe_shape_path), "rb") as f:
         train_file_shape = pickle.load(f)
@@ -220,11 +223,14 @@ def main():
                 avg_validation_loss = validation_loss / args.num_validation_batches
                 if avg_validation_loss < best_validation_loss:
                     best_validation_loss = avg_validation_loss
+                    best_validation_t = t
                     save_checkpoint(
                         model, optimizer, t, args.validation_checkpoint_file, best_validation_loss
                     )
                 logging.info(f"Step {t} Validation : loss={avg_validation_loss:.4f}")
                 to_log["validation_loss"] = avg_validation_loss
+                to_log["best_validation_loss"] = best_validation_loss
+                to_log["best_validation_t"] = best_validation_t
             model.train()
             validation_end_time = time.time()
             logging.info(
