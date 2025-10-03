@@ -194,6 +194,7 @@ def main():
             "avg_batch_time": batch_time,
         }
         if t % args.validation_interval == 0:
+            validation_start_time = time.time()
             model.eval()
             with torch.no_grad():
                 validation_loss = 0.0
@@ -208,6 +209,10 @@ def main():
                 logging.info(f"Step {t} Validation : loss={avg_validation_loss:.4f}")
                 to_log["validation_loss"] = avg_validation_loss
             model.train()
+            validation_end_time = time.time()
+            logging.info(
+                f"  Validation step time: {validation_start_time - validation_end_time:.4f}s"
+            )
 
         run.log(to_log, step=t)
         iter_end_time = time.time()
