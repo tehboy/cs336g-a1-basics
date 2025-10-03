@@ -100,9 +100,9 @@ def main():
     else:
         t = 1
 
-    with open(str(args.bpe_shape_path), "rb") as f:
+    with open(str(args.bpe_shape_path), 'rb') as f:
         train_file_shape = pickle.load(f)
-    train_file = np.memmap(args.bpe_path, dtype=np.uint16, mode="r", shape=train_file_shape)
+    train_file = np.memmap(args.bpe_path, dtype=np.uint16, mode='r', shape=train_file_shape)
     logging.info(
         f"Memmapped training file: {args.bpe_path} with shape {train_file.shape} and dtype {train_file.dtype}"
     )
@@ -156,7 +156,7 @@ def main():
 
             batch_loss = loss.item()
             batch_losses.append(batch_loss)
-            batch_times.append(batch_end_time - batch_start_time)
+            batch_times.append(time.time() - batch_start_time)
             if t % 10 == 0 or t == 1:
                 logging.info(f"Step {t} Batch {batch_n}: loss={loss.item():.4f}, lr={lr:.6f}")
                 logging.info(f"  get_batch time: {batch_end_time - batch_start_time:.4f}s")
