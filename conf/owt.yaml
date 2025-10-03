@@ -16,5 +16,7 @@ rope_theta: 10000
 num_layers: 4
 num_heads: 16
 batch_size: 64
-num_batches: 2
-training_steps: 1250
+num_batches: 1
+training_steps: 2500
+max_lr: 0.01
+min_lr: 0.001
