@@ -65,7 +65,7 @@ def main():
         args.merges_path,
         args.bpe_path,
         args.bpe_shape_path,
-        args.dry_run
+        args.dry_run,
     )
     process_file(
         args.valid_txt_path,
@@ -73,7 +73,7 @@ def main():
         args.merges_path,
         args.valid_bpe_path,
         args.valid_bpe_shape_path,
-        args.dry_run
+        args.dry_run,
     )
 
 

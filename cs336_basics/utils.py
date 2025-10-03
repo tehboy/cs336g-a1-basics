@@ -110,6 +110,8 @@ class ModelArgs:
         parser.add_argument("--eps", type=float)
         parser.add_argument("--seed", type=int)
         parser.add_argument("--checkpoint_interval", type=int)
+        parser.add_argument("--validation_interval", type=int)
+        parser.add_argument("--num_validation_batches", type=int)
 
         # New arguments for run_prompt.py
         parser.add_argument("--temperature", type=float)
@@ -162,6 +164,8 @@ class ModelArgs:
             "temperature": 0.7,
             "nucleus": 0.9,
             "max_tokens": 100,
+            "validation_interval": 100,
+            "num_validation_batches": 4,
         }
 
     def __getattr__(self, name):

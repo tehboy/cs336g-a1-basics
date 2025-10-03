@@ -42,6 +42,7 @@ def main():
         project="cs336",
         config={
             "train_file": args.bpe_path,
+            "valid_file": args.valid_bpe_path,
             "vocab_size": args.vocab_size,
             "training_steps": args.training_steps,
             "batch_size": args.batch_size,
@@ -105,6 +106,13 @@ def main():
     train_file = np.memmap(args.bpe_path, dtype=np.uint16, mode="r", shape=train_file_shape)
     logging.info(
         f"Memmapped training file: {args.bpe_path} with shape {train_file.shape} and dtype {train_file.dtype}"
+    )
+
+    with open(str(args.valid_bpe_shape_path), "rb") as f:
+        valid_file_shape = pickle.load(f)
+    valid_file = np.memmap(args.valid_bpe_path, dtype=np.uint16, mode="r", shape=valid_file_shape)
+    logging.info(
+        f"Memmapped validation file: {args.valid_bpe_path} with shape {valid_file.shape.shape} and dtype {valid_file.dtype}"
     )
 
     logging.info("Beginning training run.")
@@ -178,17 +186,30 @@ def main():
         running_loss = torch.tensor(batch_losses).mean()
         g = torch.tensor(batch_grads).mean()
         batch_time = sum(batch_times) / len(batch_times)
+        to_log = {
+            "epoch": t,
+            "lr": lr,
+            "avg_grad_norm": g,
+            "avg_epoch_loss": running_loss.item(),
+            "avg_batch_time": batch_time,
+        }
+        if t % args.validation_interval == 0:
+            model.eval()
+            with torch.no_grad():
+                validation_loss = 0.0
+                for _ in range(args.num_validation_batches):
+                    validation_input, validation_target = get_batch(
+                        valid_file, int(args.batch_size), int(args.context_length), device
+                    )
 
-        run.log(
-            {
-                "epoch": t,
-                "lr": lr,
-                "avg_grad_norm": g,
-                "avg_epoch_loss": running_loss.item(),
-                "avg_batch_time": batch_time,
-            },
-            step=t,
-        )
+                    validation_output = model(validation_input)
+                    validation_loss += cross_entropy(validation_output, validation_target).item()
+                avg_validation_loss = validation_loss / args.num_validation_batches
+                logging.info(f"Step {t} Validation : loss={avg_validation_loss:.4f}")
+                to_log["validation_loss"] = avg_validation_loss
+            model.train()
+
+        run.log(to_log, step=t)
         iter_end_time = time.time()
 
         # Logging
