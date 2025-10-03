@@ -1,4 +1,5 @@
 import os
+import random
 from typing import IO, Any, BinaryIO
 
 import numpy.typing as npt
@@ -33,7 +34,15 @@ def get_batch(
     if isinstance(device, str):
         device = torch.device(device)
     # Random starting points
-    starting_points = np.random.choice(len(dataset) - context_length, batch_size, replace=False)
+    block_size = min(batch_size * 1000, dataset.shape[0])
+    block_max_start = max(
+        0, min(dataset.shape[0] - context_length - batch_size - 1, dataset.shape[0] - block_size)
+    )
+
+    block_start = random.randrange(block_max_start + 1)
+    starting_points = (
+        np.random.choice(block_size - context_length, batch_size, replace=False) + block_start
+    )
     starting_points = np.sort(starting_points)
 
     inputs = torch.empty((batch_size, context_length), dtype=torch.long)
