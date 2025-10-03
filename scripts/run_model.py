@@ -108,7 +108,7 @@ def main():
     )
 
     logging.info("Beginning training run.")
-    run.watch(model)
+    run.watch(model, log='all', log_freq=100)
     while t <= int(args.training_steps):
         iter_start_time = time.time()
 
