@@ -155,7 +155,7 @@ class ModelArgs:
             "beta2": 0.999,
             "eps": 1e-8,
             "seed": 1337,
-            "checkpoint_interval": 10,
+            "checkpoint_interval": 500,
             "temperature": 0.7,
             "nucleus": 0.9,
             "max_tokens": 100,
