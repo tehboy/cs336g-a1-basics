@@ -113,8 +113,10 @@ def main():
         )
         validation_checkpoint = torch.load(args.validation_checkpoint_file)
         best_validation_loss = validation_checkpoint["loss"]
-        best_validation_t = validation_checkpoint['iteration']
-        logging.info(f"Loaded best validation loss: {best_validation_loss} at t: {best_validation_t}")
+        best_validation_t = validation_checkpoint["iteration"]
+        logging.info(
+            f"Loaded best validation loss: {best_validation_loss} at t: {best_validation_t}"
+        )
 
     with open(str(args.bpe_shape_path), "rb") as f:
         train_file_shape = pickle.load(f)
