@@ -41,7 +41,6 @@ def transformer_input_size(batch_size, context_length, d_m):
 def input_size(batch_size, context_length):
     return batch_size * context_length
 
-
 def matmul_flops(i, j, k):
     return 2 * i * j * k
 
